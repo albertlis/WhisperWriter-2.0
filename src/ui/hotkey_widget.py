@@ -27,12 +27,17 @@ if _kb is not None:
     _modifier_names: dict[object, str] = {
         _kb.Key.ctrl_l: "ctrl",
         _kb.Key.ctrl_r: "ctrl",
+        _kb.Key.ctrl: "ctrl",
         _kb.Key.alt_l: "alt",
         _kb.Key.alt_r: "alt",
+        _kb.Key.alt: "alt",
+        _kb.Key.alt_gr: "alt",
         _kb.Key.shift_l: "shift",
         _kb.Key.shift_r: "shift",
+        _kb.Key.shift: "shift",
         _kb.Key.cmd_l: "win",
         _kb.Key.cmd_r: "win",
+        _kb.Key.cmd: "win",
     }
     _special_names: dict[object, str] = {
         _kb.Key.space: "space",
@@ -83,17 +88,29 @@ _KEY_GROUPS = [
 ]
 
 
+def _is_modifier(key) -> bool:
+    """Check if key is a modifier — handles platform-specific variants via name."""
+    if key in _modifier_names:
+        return True
+    name = getattr(key, "name", None) or ""
+    return any(m in name for m in ("ctrl", "alt", "shift", "cmd", "win", "super", "meta"))
+
+
 def _get_key_name(key) -> str | None:
     if not _pynput_available:
         return None
+    if _is_modifier(key):
+        return None
     if key in _special_names:
         return _special_names[key]
-    if hasattr(key, "name") and key.name and key.name.startswith("f"):
-        rest = key.name[1:]
-        if rest.isdigit():
-            return key.name
-    if hasattr(key, "char") and key.char:
-        return key.char.lower()
+    # Function keys: f1..f24 (name = 'f1', 'f2', ...)
+    name = getattr(key, "name", None) or ""
+    if name.startswith("f") and name[1:].isdigit():
+        return name
+    # Regular printable char
+    char = getattr(key, "char", None)
+    if char and char.isprintable() and not char.isspace():
+        return char.lower()
     return None
 
 
@@ -169,9 +186,8 @@ class HotkeyWidget(QWidget):
     def setText(self, value: str) -> None:
         self.line_edit.setText(value)
 
-    @override
     def setObjectName(self, name: str) -> None:  # type: ignore[override]
-        super().setObjectName(name)
+        super().setObjectName(name)  # type: ignore[arg-type]
         self.line_edit.setObjectName(name)
 
     # ── Recording ───────────────────────────────────────────────────────────
@@ -199,32 +215,46 @@ class HotkeyWidget(QWidget):
 
     def _on_press(self, key) -> None:
         mod = _modifier_names.get(key)
+        if mod is None:
+            # Fallback: match by name for platform-specific variants
+            name = (getattr(key, "name", None) or "").lower()
+            for pattern, canonical in (
+                ("ctrl", "ctrl"), ("alt", "alt"), ("shift", "shift"),
+                ("cmd", "win"), ("win", "win"), ("super", "win"), ("meta", "win"),
+            ):
+                if pattern in name:
+                    mod = canonical
+                    break
         if mod:
             self._held_mods.add(mod)
 
     def _on_release(self, key) -> None:
         if _kb is not None and key == _kb.Key.esc:
+            # Stop listener immediately (thread-safe), update UI via main thread
+            if self._listener:
+                self._listener.stop()
             QTimer.singleShot(0, self._cancel_recording)
-            QTimer.singleShot(0, self._stop_listener)
             return
 
-        if key in _modifier_names:
+        if _is_modifier(key):
             return
 
         key_name = _get_key_name(key)
         if key_name:
             ordered_mods = [m for m in _MODIFIER_DISPLAY_ORDER if m in self._held_mods]
             combo = "+".join(ordered_mods + [key_name])
+            # Stop immediately in pynput thread — eliminates detection delay
+            if self._listener:
+                self._listener.stop()
             QTimer.singleShot(0, lambda: self._fill_combo(combo))
-            QTimer.singleShot(0, self._stop_listener)
 
     def _fill_combo(self, combo: str) -> None:
         if self._cancel_timer:
             self._cancel_timer.stop()
+        self._listener = None
         self.line_edit.setText(combo)
         self.line_edit.setPlaceholderText("e.g. ctrl+shift+space")
         self._reset_button()
-        self._stop_listener()
 
     def _cancel_recording(self) -> None:
         self._stop_listener()
