@@ -10,7 +10,7 @@ from PyQt6.QtCore import (
     QPropertyAnimation,
     QEasingCurve,
 )
-from PyQt6.QtGui import QFont, QPixmap, QCloseEvent, QPaintEvent
+from PyQt6.QtGui import QFont, QCloseEvent, QPaintEvent
 from PyQt6.QtWidgets import QApplication, QLabel, QHBoxLayout, QSizePolicy
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -91,22 +91,9 @@ class StatusWindow(BaseWindow):
         row.setSpacing(10)
         row.setContentsMargins(0, 0, 0, 0)
 
-        microphone_path = os.path.join("assets", "microphone.png")
-        pencil_path = os.path.join("assets", "pencil.png")
-        self._mic_pixmap: QPixmap = QPixmap(microphone_path).scaled(
-            24, 24,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self._pencil_pixmap: QPixmap = QPixmap(pencil_path).scaled(
-            24, 24,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-        self.icon_label: QLabel = QLabel()
-        self.icon_label.setFixedSize(24, 24)
-        self.icon_label.setPixmap(self._mic_pixmap)
+        self.icon_label: QLabel = QLabel("🎙")
+        self.icon_label.setFont(QFont("Segoe UI Emoji", 15))
+        self.icon_label.setFixedSize(26, 26)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.status_label: QLabel = QLabel("Recording...")
@@ -200,7 +187,7 @@ class StatusWindow(BaseWindow):
     @pyqtSlot(str, bool)
     def updateStatus(self, status: str, use_llm: bool = False) -> None:
         if status == "recording":
-            self.icon_label.setPixmap(self._mic_pixmap)
+            self.icon_label.setText("🎙")
 
             continuous_mode = (
                 ConfigManager.get_config_value("recording_options", "recording_mode")
@@ -232,14 +219,14 @@ class StatusWindow(BaseWindow):
             self.fade_in()
 
         elif status == "warming_up":
-            self.icon_label.setPixmap(self._mic_pixmap)
+            self.icon_label.setText("🎙")
             self.status_label.setText("Preparing microphone...")
             self._pulse_timer.stop()
             self.pulse_dot.hide()
             self.fade_in()
 
         elif status == "transcribing":
-            self.icon_label.setPixmap(self._pencil_pixmap)
+            self.icon_label.setText("✍")
             self.status_label.setText("Transcribing...")
             self._pulse_timer.stop()
             self.pulse_dot.hide()
@@ -247,7 +234,7 @@ class StatusWindow(BaseWindow):
                 self.fade_in()
 
         elif status == "processing_llm_cleanup":
-            self.icon_label.setPixmap(self._pencil_pixmap)
+            self.icon_label.setText("✍")
             api_type = (
                 ConfigManager.get_config_value("llm_post_processing", "api_type")
                 or "LLM"
@@ -259,7 +246,7 @@ class StatusWindow(BaseWindow):
                 self.fade_in()
 
         elif status == "processing_llm_instruction":
-            self.icon_label.setPixmap(self._pencil_pixmap)
+            self.icon_label.setText("✍")
             api_type = (
                 ConfigManager.get_config_value("llm_post_processing", "api_type")
                 or "LLM"
