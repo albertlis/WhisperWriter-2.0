@@ -114,16 +114,26 @@ class SettingsWindow(BaseWindow):
                         self.add_setting_widget(layout, key, meta, category, sub_category)
 
     def create_buttons(self):
-        """Create reset and save buttons."""
-        reset_button = QPushButton('Reset to saved settings')
+        """Create reset, save, and close buttons."""
+        btn_row = QHBoxLayout()
+
+        reset_button = QPushButton('Reset')
         reset_button.setFont(QFont('Segoe UI', 11))
         reset_button.clicked.connect(self.reset_settings)
-        self.main_layout.addWidget(reset_button)
+
+        close_button = QPushButton('Close')
+        close_button.setFont(QFont('Segoe UI', 11))
+        close_button.clicked.connect(self.handleCloseButton)
 
         save_button = QPushButton('Save')
         save_button.setFont(QFont('Segoe UI', 11))
         save_button.clicked.connect(self.save_settings)
-        self.main_layout.addWidget(save_button)
+
+        btn_row.addWidget(reset_button)
+        btn_row.addWidget(close_button)
+        btn_row.addStretch()
+        btn_row.addWidget(save_button)
+        self.main_layout.addLayout(btn_row)
 
     def add_setting_widget(self, layout, key, meta, category, sub_category=None):
         """Add a setting widget to the layout."""

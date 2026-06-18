@@ -67,50 +67,58 @@ class StatusWindow(BaseWindow):
         self.statusSignal.connect(self.updateStatus)
 
     def _init_status_ui(self) -> None:
+        # setWindowFlags recreates the native HWND — must re-apply WA_TranslucentBackground after
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+        # Dynamic width: shrinks/grows with text; fixed height for pill shape
+        self.setFixedHeight(52)
+        self.setMinimumWidth(180)
+        self.setMaximumWidth(620)
 
         self.main_widget.setObjectName("statusContent")
-        self.main_layout.setContentsMargins(14, 0, 14, 0)
+        self.main_layout.setContentsMargins(16, 0, 16, 0)
         self.main_layout.setSpacing(0)
 
+        # Pre-apply fallback QSS so window is never white on first show
+        self.setStyleSheet(_STATUS_QSS_FALLBACK)
+
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(10)
         row.setContentsMargins(0, 0, 0, 0)
 
         microphone_path = os.path.join("assets", "microphone.png")
         pencil_path = os.path.join("assets", "pencil.png")
         self._mic_pixmap: QPixmap = QPixmap(microphone_path).scaled(
-            20,
-            20,
+            24, 24,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
         self._pencil_pixmap: QPixmap = QPixmap(pencil_path).scaled(
-            20,
-            20,
+            24, 24,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
 
         self.icon_label: QLabel = QLabel()
-        self.icon_label.setFixedSize(20, 20)
+        self.icon_label.setFixedSize(24, 24)
         self.icon_label.setPixmap(self._mic_pixmap)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.status_label: QLabel = QLabel("Recording...")
-        self.status_label.setFont(QFont("Segoe UI Variable Display", 12))
+        self.status_label.setFont(QFont("Segoe UI", 12))
         self.status_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
 
         self.pulse_dot: QLabel = QLabel()
-        self.pulse_dot.setFixedSize(8, 8)
+        self.pulse_dot.setFixedSize(10, 10)
         self.pulse_dot.setStyleSheet(
-            "QLabel { background: rgba(255,68,68,0.3); border-radius: 4px; }"
+            "QLabel { background: rgba(255,68,68,0.3); border-radius: 5px; }"
         )
         self.pulse_dot.hide()
 
@@ -130,9 +138,12 @@ class StatusWindow(BaseWindow):
         if screen is None:
             return
         geo = screen.geometry()
-        self.adjustSize()
-        x = (geo.width() - self.width()) // 2
-        y = geo.height() - self.height() - 80
+        # Fit width to text content (icon + padding + text + padding + dot)
+        hint = self.status_label.sizeHint().width() + 24 + 10 + 32
+        w = max(180, min(hint, 620))
+        self.resize(w, 52)
+        x = (geo.width() - w) // 2
+        y = geo.height() - 52 - 80
         self.move(x, y)
 
     def fade_in(self) -> None:
@@ -178,7 +189,7 @@ class StatusWindow(BaseWindow):
             self._pulse_dir = 1
         r, g, b = self._pulse_color
         self.pulse_dot.setStyleSheet(
-            f"QLabel {{ background: rgba({r},{g},{b},{self._pulse_alpha:.2f}); border-radius: 4px; }}"
+            f"QLabel {{ background: rgba({r},{g},{b},{self._pulse_alpha:.2f}); border-radius: 5px; }}"
         )
 
     @override
