@@ -170,13 +170,15 @@ class HotkeyWidget(QWidget):
         self.line_edit.setText(value)
 
     @override
-    def setObjectName(self, name: str) -> None:
+    def setObjectName(self, name: str) -> None:  # type: ignore[override]
         super().setObjectName(name)
         self.line_edit.setObjectName(name)
 
     # ── Recording ───────────────────────────────────────────────────────────
 
     def _start_recording(self) -> None:
+        if _kb is None:
+            return
         self._original_value = self.line_edit.text()
         self.line_edit.clear()
         self.line_edit.setPlaceholderText("Press a key combination...")
@@ -186,7 +188,7 @@ class HotkeyWidget(QWidget):
 
         self._listener = _kb.Listener(
             on_press=self._on_press,
-            on_release=self._on_release,
+            on_release=self._on_release,  # type: ignore[arg-type]
         )
         self._listener.start()
 
@@ -200,21 +202,21 @@ class HotkeyWidget(QWidget):
         if mod:
             self._held_mods.add(mod)
 
-    def _on_release(self, key) -> bool | None:
-        if key == _kb.Key.esc:
+    def _on_release(self, key) -> None:
+        if _kb is not None and key == _kb.Key.esc:
             QTimer.singleShot(0, self._cancel_recording)
-            return False
+            QTimer.singleShot(0, self._stop_listener)
+            return
 
         if key in _modifier_names:
-            return None
+            return
 
         key_name = _get_key_name(key)
         if key_name:
             ordered_mods = [m for m in _MODIFIER_DISPLAY_ORDER if m in self._held_mods]
             combo = "+".join(ordered_mods + [key_name])
             QTimer.singleShot(0, lambda: self._fill_combo(combo))
-
-        return False
+            QTimer.singleShot(0, self._stop_listener)
 
     def _fill_combo(self, combo: str) -> None:
         if self._cancel_timer:
