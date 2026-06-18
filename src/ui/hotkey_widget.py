@@ -1,6 +1,5 @@
 import os
 import sys
-from typing import override
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
@@ -186,7 +185,7 @@ class HotkeyWidget(QWidget):
     def setText(self, value: str) -> None:
         self.line_edit.setText(value)
 
-    def setObjectName(self, name: str) -> None:  # type: ignore[override]
+    def setObjectName(self, name: str) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         super().setObjectName(name)  # type: ignore[arg-type]
         self.line_edit.setObjectName(name)
 
