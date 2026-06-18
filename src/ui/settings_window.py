@@ -1,11 +1,11 @@
 import os
 import sys
-from dotenv import set_key, load_dotenv
+from dotenv import load_dotenv
 from PyQt6.QtWidgets import (
     QApplication, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox,
-    QMessageBox, QTabWidget, QWidget, QSizePolicy, QSpacerItem, QToolButton, QStyle, QFileDialog, QTextEdit, QSpinBox, QScrollArea
+    QMessageBox, QTabWidget, QWidget, QSizePolicy, QSpacerItem, QFileDialog, QTextEdit, QSpinBox, QScrollArea
 )
-from PyQt6.QtCore import Qt, QCoreApplication, QProcess, pyqtSignal, QMetaObject, QThread, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QFont, QIntValidator
 import sounddevice as sd
 
@@ -14,7 +14,6 @@ from ui.base_window import BaseWindow
 from utils import ConfigManager
 from keyring_manager import KeyringManager
 from llm_processor import LLMProcessor
-from ui.model_refresh_worker import ModelRefreshWorker
 
 load_dotenv()
 
@@ -168,20 +167,23 @@ class SettingsWindow(BaseWindow):
         label.setFont(QFont('Segoe UI', 11))
         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-        help_button = self.create_help_button(meta.get('description', ''))
-
         item_layout.addWidget(label)
         item_layout.addWidget(widget)
-        item_layout.addWidget(help_button)
         layout.addLayout(item_layout)
 
-        # Set object names for the widget, label, and help button
+        description = meta.get('description', '')
+        if description:
+            desc_label = QLabel(description)
+            desc_label.setWordWrap(True)
+            desc_label.setObjectName('settingDescription')
+            desc_label.setContentsMargins(0, 0, 0, 6)
+            layout.addWidget(desc_label)
+
+        # Set object names for the widget and label
         widget_name = f"{category}_{sub_category}_{key}_input" if sub_category else f"{category}_{key}_input"
         label_name = f"{category}_{sub_category}_{key}_label" if sub_category else f"{category}_{key}_label"
-        help_name = f"{category}_{sub_category}_{key}_help" if sub_category else f"{category}_{key}_help"
-        
+
         label.setObjectName(label_name)
-        help_button.setObjectName(help_name)
         
         if isinstance(widget, QWidget):
             widget.setObjectName(widget_name)
@@ -343,16 +345,6 @@ class SettingsWindow(BaseWindow):
         
         return widget
 
-    def create_help_button(self, description):
-        help_button = QToolButton()
-        help_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion))
-        help_button.setAutoRaise(True)
-        help_button.setToolTip(description)
-        help_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        help_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        help_button.clicked.connect(lambda: self.show_description(description))
-        return help_button
-
     def get_config_value(self, category, sub_category, key, meta):
         if sub_category:
             return ConfigManager.get_config_value(category, sub_category, key) or meta['value']
@@ -362,10 +354,6 @@ class SettingsWindow(BaseWindow):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Whisper Model File", "", "Model Files (*.bin);;All Files (*)")
         if file_path:
             widget.setText(file_path)
-
-    def show_description(self, description):
-        """Show a description dialog."""
-        QMessageBox.information(self, 'Description', description)
 
     def save_settings(self):
         """Save the settings to the config file and keyring."""
@@ -556,12 +544,9 @@ class SettingsWindow(BaseWindow):
             
             # Also toggle visibility of the corresponding label and help button
             label = self.findChild(QLabel, f"{category}_{sub_category}_{key}_label")
-            help_button = self.findChild(QToolButton, f"{category}_{sub_category}_{key}_help")
-            
+
             if label:
                 label.setVisible(use_api if sub_category == 'api' else not use_api)
-            if help_button:
-                help_button.setVisible(use_api if sub_category == 'api' else not use_api)
 
     def _iter_settings_gen(self):
         for category, settings in self.schema.items():
@@ -816,7 +801,7 @@ class SettingsWindow(BaseWindow):
                             'channels': device['max_input_channels'],
                             'default': device is sd.default.device[0]
                         })
-                except sd.PortAudioError as e:
+                except sd.PortAudioError:
                     # ConfigManager.console_print(f"Device {i}: {device['name']} not suitable for recording: {str(e)}")
                     continue
                 
