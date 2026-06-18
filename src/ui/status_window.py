@@ -44,12 +44,25 @@ class StatusWindow(BaseWindow):
     def __init__(self) -> None:
         super().__init__("WhisperWriter Status", 320, 52, show_title_bar=False)
         self._mica_active: bool = False
-        self._fade_anim: QPropertyAnimation | None = None
         self._pulse_timer: QTimer = QTimer()
         self._pulse_timer.timeout.connect(self._update_pulse)
         self._pulse_alpha: float = 0.3
         self._pulse_dir: int = 1
         self._pulse_color: tuple[int, int, int] = (255, 68, 68)
+
+        self._fade_in_anim: QPropertyAnimation = QPropertyAnimation(
+            self, b"windowOpacity"
+        )
+        self._fade_in_anim.setDuration(120)
+        self._fade_in_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        self._fade_out_anim: QPropertyAnimation = QPropertyAnimation(
+            self, b"windowOpacity"
+        )
+        self._fade_out_anim.setDuration(200)
+        self._fade_out_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        _ = self._fade_out_anim.finished.connect(self.hide)
+
         self._init_status_ui()
         self.statusSignal.connect(self.updateStatus)
 
@@ -124,11 +137,8 @@ class StatusWindow(BaseWindow):
 
     def fade_in(self) -> None:
         self._position_window()
-        if (
-            self._fade_anim
-            and self._fade_anim.state() == QPropertyAnimation.State.Running
-        ):
-            self._fade_anim.stop()
+        if self._fade_out_anim.state() != QPropertyAnimation.State.Stopped:
+            self._fade_out_anim.stop()
         self.setWindowOpacity(0.0)
         super(BaseWindow, self).show()
         if not self._mica_active:
@@ -136,30 +146,20 @@ class StatusWindow(BaseWindow):
             self.setStyleSheet(
                 _STATUS_QSS_MICA if self._mica_active else _STATUS_QSS_FALLBACK
             )
-        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
-        self._fade_anim.setDuration(120)
-        self._fade_anim.setStartValue(0.0)
-        self._fade_anim.setEndValue(1.0)
-        self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._fade_anim.start()
+        self._fade_in_anim.setStartValue(0.0)
+        self._fade_in_anim.setEndValue(1.0)
+        self._fade_in_anim.start()
 
     def fade_out(self) -> None:
         if not self.isVisible():
             return
-        if (
-            self._fade_anim
-            and self._fade_anim.state() == QPropertyAnimation.State.Running
-        ):
-            self._fade_anim.stop()
+        if self._fade_in_anim.state() != QPropertyAnimation.State.Stopped:
+            self._fade_in_anim.stop()
         self._pulse_timer.stop()
         self.pulse_dot.hide()
-        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
-        self._fade_anim.setDuration(200)
-        self._fade_anim.setStartValue(self.windowOpacity())
-        self._fade_anim.setEndValue(0.0)
-        self._fade_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-        self._fade_anim.finished.connect(self.hide)
-        self._fade_anim.start()
+        self._fade_out_anim.setStartValue(self.windowOpacity())
+        self._fade_out_anim.setEndValue(0.0)
+        self._fade_out_anim.start()
 
     def _start_pulse(self, color: tuple[int, int, int] = (255, 68, 68)) -> None:
         self._pulse_color = color
