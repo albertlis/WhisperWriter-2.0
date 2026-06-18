@@ -11,6 +11,7 @@ import sounddevice as sd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ui.base_window import BaseWindow
+from ui.hotkey_widget import HotkeyWidget
 from utils import ConfigManager
 from keyring_manager import KeyringManager
 from llm_processor import LLMProcessor
@@ -197,6 +198,12 @@ class SettingsWindow(BaseWindow):
         """Create a widget based on the meta type."""
         meta_type = meta.get('type')
         current_value = self.get_config_value(category, sub_category, key, meta)
+
+        _HOTKEY_KEYS = {'activation_key', 'llm_cleanup_key', 'llm_instruction_key', 'text_cleanup_key'}
+        if category == 'recording_options' and key in _HOTKEY_KEYS:
+            widget = HotkeyWidget()
+            widget.setText(str(current_value) if current_value else '')
+            return widget
 
         # Special handling for find replace file
         if category == 'post_processing' and key == 'find_replace_file':
