@@ -10,7 +10,8 @@ from PyQt6.QtCore import (
     QPropertyAnimation,
     QEasingCurve,
 )
-from PyQt6.QtGui import QFont, QCloseEvent, QPaintEvent
+from PyQt6.QtCore import QRectF
+from PyQt6.QtGui import QFont, QCloseEvent, QPaintEvent, QPainter, QBrush, QColor, QPainterPath
 from PyQt6.QtWidgets import QApplication, QLabel, QHBoxLayout, QSizePolicy
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -18,23 +19,8 @@ from ui.base_window import BaseWindow, apply_mica
 from utils import ConfigManager
 
 
-_STATUS_QSS_MICA = """
-    QWidget#statusContent {
-        background: rgba(10, 10, 20, 0.30);
-        border-radius: 26px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-    QLabel { background: transparent; border: none; color: #f0f0f0; }
-"""
-
-_STATUS_QSS_FALLBACK = """
-    QWidget#statusContent {
-        background: rgba(28, 28, 38, 0.92);
-        border-radius: 26px;
-        border: 1px solid rgba(255, 255, 255, 0.10);
-    }
-    QLabel { background: transparent; border: none; color: #f0f0f0; }
-"""
+_LABEL_STYLE = "QLabel { background: transparent; border: none; color: #f0f0f0; }"
+_RADIUS = 26
 
 
 class StatusWindow(BaseWindow):
@@ -84,8 +70,8 @@ class StatusWindow(BaseWindow):
         self.main_layout.setContentsMargins(16, 0, 16, 0)
         self.main_layout.setSpacing(0)
 
-        # Pre-apply fallback QSS so window is never white on first show
-        self.setStyleSheet(_STATUS_QSS_FALLBACK)
+        # Prevent Qt from auto-filling main_widget background (would cover our rounded paintEvent)
+        self.main_widget.setAutoFillBackground(False)
 
         row = QHBoxLayout()
         row.setSpacing(10)
@@ -95,9 +81,11 @@ class StatusWindow(BaseWindow):
         self.icon_label.setFont(QFont("Segoe UI Emoji", 15))
         self.icon_label.setFixedSize(26, 26)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setStyleSheet(_LABEL_STYLE)
 
         self.status_label: QLabel = QLabel("Recording...")
         self.status_label.setFont(QFont("Segoe UI", 12))
+        self.status_label.setStyleSheet(_LABEL_STYLE)
         self.status_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
         )
@@ -118,7 +106,16 @@ class StatusWindow(BaseWindow):
 
     @override
     def paintEvent(self, a0: QPaintEvent | None) -> None:
-        pass  # ponytail: Mica/Acrylic + QSS handle background
+        # Draw rounded rect directly — area outside path is transparent (WA_TranslucentBackground)
+        # With Mica: semi-transparent tint over DWM blur. Without: opaque dark pill.
+        alpha = 55 if self._mica_active else 230
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), _RADIUS, _RADIUS)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QBrush(QColor(28, 28, 38, alpha)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
 
     def _position_window(self) -> None:
         screen = QApplication.primaryScreen()
@@ -141,9 +138,7 @@ class StatusWindow(BaseWindow):
         super(BaseWindow, self).show()
         if not self._mica_active:
             self._mica_active = apply_mica(int(self.winId()), backdrop_type=3)
-            self.setStyleSheet(
-                _STATUS_QSS_MICA if self._mica_active else _STATUS_QSS_FALLBACK
-            )
+            self.update()  # repaint with correct alpha for Mica vs fallback
         self._fade_in_anim.setStartValue(0.0)
         self._fade_in_anim.setEndValue(1.0)
         self._fade_in_anim.start()
