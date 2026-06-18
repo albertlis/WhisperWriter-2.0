@@ -1,12 +1,12 @@
 import os
 import sys
 from dotenv import set_key, load_dotenv
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox,
     QMessageBox, QTabWidget, QWidget, QSizePolicy, QSpacerItem, QToolButton, QStyle, QFileDialog, QTextEdit, QSpinBox, QScrollArea
 )
-from PyQt5.QtCore import Qt, QCoreApplication, QProcess, pyqtSignal, QMetaObject, QThread, QTimer
-from PyQt5.QtGui import QFont, QIntValidator
+from PyQt6.QtCore import Qt, QCoreApplication, QProcess, pyqtSignal, QMetaObject, QThread, QTimer
+from PyQt6.QtGui import QFont, QIntValidator
 import sounddevice as sd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -50,6 +50,12 @@ class SettingsWindow(BaseWindow):
 
     def init_settings_ui(self):
         """Initialize the settings user interface."""
+        _qss_path = os.path.join(os.path.dirname(__file__), 'styles.qss')
+        try:
+            with open(_qss_path, encoding='utf-8') as _f:
+                self.setStyleSheet(_f.read())
+        except FileNotFoundError:
+            pass
         self.tabs = QTabWidget()
         self.tabs.setFont(QFont('Segoe UI', 11))
         self.main_layout.addWidget(self.tabs)
@@ -71,8 +77,8 @@ class SettingsWindow(BaseWindow):
             # Create a scroll area for the tab content
             scroll_area = QScrollArea()
             scroll_area.setWidgetResizable(True)
-            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             
             # Create a container widget for the scroll area
             scroll_content = QWidget()
@@ -83,7 +89,7 @@ class SettingsWindow(BaseWindow):
             self.create_settings_widgets(tab_layout, category, settings)
             
             # Add spacer at the bottom
-            tab_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+            tab_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
             
             # Set the scroll content as the widget for the scroll area
             scroll_area.setWidget(scroll_content)
@@ -160,7 +166,7 @@ class SettingsWindow(BaseWindow):
             widget.setFont(QFont('Segoe UI', 11))
 
         label.setFont(QFont('Segoe UI', 11))
-        label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         help_button = self.create_help_button(meta.get('description', ''))
 
@@ -316,7 +322,7 @@ class SettingsWindow(BaseWindow):
         widget = QLineEdit(value)
         
         if password_mode:
-            widget.setEchoMode(QLineEdit.Password)
+            widget.setEchoMode(QLineEdit.EchoMode.Password)
             # Load appropriate API key from keyring
             if key == 'openai_transcription_api_key':
                 widget.setText(KeyringManager.get_api_key("openai_transcription") or value)
@@ -339,11 +345,11 @@ class SettingsWindow(BaseWindow):
 
     def create_help_button(self, description):
         help_button = QToolButton()
-        help_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxQuestion))
+        help_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion))
         help_button.setAutoRaise(True)
         help_button.setToolTip(description)
-        help_button.setCursor(Qt.PointingHandCursor)
-        help_button.setFocusPolicy(Qt.TabFocus)
+        help_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         help_button.clicked.connect(lambda: self.show_description(description))
         return help_button
 
@@ -557,19 +563,25 @@ class SettingsWindow(BaseWindow):
             if help_button:
                 help_button.setVisible(use_api if sub_category == 'api' else not use_api)
 
-    def iterate_settings(self, func):
-        """Iterate over all settings and apply a function to each."""
+    def _iter_settings_gen(self):
         for category, settings in self.schema.items():
             for sub_category, sub_settings in settings.items():
                 if isinstance(sub_settings, dict) and 'value' in sub_settings:
                     widget = self.findChild(QWidget, f"{category}_{sub_category}_input")
                     if widget:
-                        func(widget, category, None, sub_category, sub_settings)
+                        yield widget, category, None, sub_category, sub_settings
                 else:
                     for key, meta in sub_settings.items():
                         widget = self.findChild(QWidget, f"{category}_{sub_category}_{key}_input")
                         if widget:
-                            func(widget, category, sub_category, key, meta)
+                            yield widget, category, sub_category, key, meta
+
+    def iterate_settings(self, func=None):
+        """Iterate over all settings, optionally applying func to each widget."""
+        if func is None:
+            return self._iter_settings_gen()
+        for item in self._iter_settings_gen():
+            func(*item)
 
     def handleCloseButton(self):
         """Override base window close button handler to hide instead of close."""
