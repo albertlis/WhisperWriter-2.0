@@ -512,6 +512,9 @@ class SettingsWindow(BaseWindow):
 
     def set_widget_value(self, widget, value, value_type):
         """Set the value of the widget."""
+        if isinstance(widget, HotkeyWidget):
+            widget.setText(str(value) if value is not None else '')
+            return
         if isinstance(widget, QCheckBox):
             widget.setChecked(value)
         elif isinstance(widget, QComboBox):

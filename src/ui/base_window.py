@@ -134,7 +134,7 @@ class BaseWindow(QMainWindow):
         if a0 is None:
             return
         event = a0
-        if Qt.MouseButton.LeftButton and self.is_dragging:
+        if self.is_dragging:
             self.move(event.globalPosition().toPoint() - self.start_position)
             event.accept()
 

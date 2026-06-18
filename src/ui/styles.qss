@@ -98,7 +98,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 
 /* ── Labels ───────────────────────────────────────── */
 QLabel { background: transparent; }
-QLabel[objectName$="description"] {
+QLabel[objectName="settingDescription"] {
     color: #6b6b8a;
     font-size: 9pt;
     padding-top: 1px;
