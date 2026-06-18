@@ -177,7 +177,7 @@ class HotkeyWidget(QWidget):
     # ── Recording ───────────────────────────────────────────────────────────
 
     def _start_recording(self) -> None:
-        if _kb is None:
+        if _kb is None or self._listener is not None:
             return
         self._original_value = self.line_edit.text()
         self.line_edit.clear()

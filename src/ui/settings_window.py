@@ -402,6 +402,14 @@ class SettingsWindow(BaseWindow):
 
     def save_setting(self, widget, category, sub_category, key, meta):
         """Save a single setting to the config."""
+        if isinstance(widget, HotkeyWidget):
+            value = widget.text() or None
+            if sub_category:
+                ConfigManager.set_config_value(value, category, sub_category, key)
+            else:
+                ConfigManager.set_config_value(value, category, key)
+            return
+
         if isinstance(widget, QWidget) and widget.layout():
             layout = widget.layout()
             text_edit = None
