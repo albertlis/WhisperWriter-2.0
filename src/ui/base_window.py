@@ -1,9 +1,9 @@
 import ctypes
 import sys
 
-from PyQt6.QtCore import Qt, QRectF
-from PyQt6.QtGui import QPainter, QBrush, QColor, QPainterPath, QFont, QGuiApplication
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMainWindow
+from PyQt6.QtCore import Qt, QRectF, QPoint
+from PyQt6.QtGui import QPainter, QBrush, QColor, QPainterPath, QFont, QGuiApplication, QMouseEvent, QPaintEvent
+from PyQt6.QtWidgets import QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QMainWindow
 
 
 def apply_mica(hwnd: int, backdrop_type: int = 3) -> bool:
@@ -30,12 +30,19 @@ def apply_mica(hwnd: int, backdrop_type: int = 3) -> bool:
 
 
 class BaseWindow(QMainWindow):
+    _show_title_bar: bool
+    is_dragging: bool
+    main_widget: QWidget
+    main_layout: QVBoxLayout
+    start_position: QPoint
+
     def __init__(self, title: str, width: int, height: int, show_title_bar: bool = True):
         super().__init__()
         self._show_title_bar = show_title_bar
+        self.is_dragging = False
+        self.start_position = QPoint()
         self.initUI(title, width, height)
         self.setWindowPosition()
-        self.is_dragging = False
 
     def initUI(self, title: str, width: int, height: int) -> None:
         self.setWindowTitle(title)
@@ -78,7 +85,10 @@ class BaseWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
 
     def setWindowPosition(self) -> None:
-        center_point = QGuiApplication.primaryScreen().availableGeometry().center()
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        center_point = screen.availableGeometry().center()
         frame_geometry = self.frameGeometry()
         frame_geometry.moveCenter(center_point)
         self.move(frame_geometry.topLeft())
@@ -86,21 +96,27 @@ class BaseWindow(QMainWindow):
     def handleCloseButton(self) -> None:
         self.close()
 
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, a0: QMouseEvent | None) -> None:
+        if a0 is None:
+            return
+        event = a0
         if event.button() == Qt.MouseButton.LeftButton:
             self.is_dragging = True
             self.start_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
-    def mouseMoveEvent(self, event) -> None:
+    def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:
+        if a0 is None:
+            return
+        event = a0
         if Qt.MouseButton.LeftButton and self.is_dragging:
             self.move(event.globalPosition().toPoint() - self.start_position)
             event.accept()
 
-    def mouseReleaseEvent(self, event) -> None:
+    def mouseReleaseEvent(self, a0: QMouseEvent | None) -> None:
         self.is_dragging = False
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, a0: QPaintEvent | None) -> None:
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()), 20, 20)
         painter = QPainter(self)
