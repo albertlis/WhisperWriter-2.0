@@ -1,11 +1,11 @@
 import time
 import traceback
+from typing import override
+
 import numpy as np
 import sounddevice as sd
-import tempfile
-import wave
 import webrtcvad
-from PyQt5.QtCore import QThread, QMutex, pyqtSignal
+from PyQt6.QtCore import QThread, QMutex, pyqtSignal
 from collections import deque
 from threading import Event
 
@@ -30,10 +30,10 @@ class ResultThread(QThread):
         resultSignal: Emits the transcription result
     """
 
-    statusSignal = pyqtSignal(str, bool)
-    resultSignal = pyqtSignal(str)
+    statusSignal: pyqtSignal = pyqtSignal(str, bool)
+    resultSignal: pyqtSignal = pyqtSignal(str)
 
-    def __init__(self, local_model=None, use_llm=False):
+    def __init__(self, local_model: object | None = None, use_llm: bool = False) -> None:
         """
         Initialize the ResultThread.
 
@@ -41,24 +41,24 @@ class ResultThread(QThread):
         :param use_llm: Boolean indicating whether to use LLM mode
         """
         super().__init__()
-        self.local_model = local_model
-        self.use_llm = use_llm
-        self.is_recording = False
-        self.is_running = True
-        self.sample_rate = None
-        self.mutex = QMutex()
-        self.stop_event = Event()
-        self.media_controller = MediaController()
-        self.last_audio_time = time.time()
-        self.is_transcribing = False  # New flag to track transcription state
+        self.local_model: object | None = local_model
+        self.use_llm: bool = use_llm
+        self.is_recording: bool = False
+        self.is_running: bool = True
+        self.sample_rate: int | None = None
+        self.mutex: QMutex = QMutex()
+        self.stop_event: Event = Event()
+        self.media_controller: MediaController = MediaController()
+        self.last_audio_time: float = time.time()
+        self.is_transcribing: bool = False  # New flag to track transcription state
 
-    def stop_recording(self):
+    def stop_recording(self) -> None:
         """Stop the current recording session."""
         self.mutex.lock()
         self.is_recording = False
         self.mutex.unlock()
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the entire thread execution."""
         self.mutex.lock()
         self.is_running = False
@@ -66,7 +66,8 @@ class ResultThread(QThread):
         self.statusSignal.emit('idle', False)
         self.wait()
 
-    def run(self):
+    @override
+    def run(self) -> None:
         """Main execution method for the thread."""
         try:
             if not self.is_running:
@@ -81,8 +82,7 @@ class ResultThread(QThread):
             self.is_recording = True
             self.mutex.unlock()
 
-            self.statusSignal.emit('recording', self.use_llm)
-            ConfigManager.console_print('Recording...')
+            self.statusSignal.emit('warming_up', self.use_llm)
             audio_data = self._record_audio()
 
             if not self.is_running:
@@ -126,13 +126,13 @@ class ResultThread(QThread):
         finally:
             self.is_transcribing = False  # Ensure flag is reset
 
-    def _record_audio(self):
+    def _record_audio(self) -> np.ndarray | None:
         """
         Record audio from the microphone and save it to a temporary file.
 
         :return: numpy array of audio data, or None if the recording is too short
         """
-        recording_options = ConfigManager.get_config_section('recording_options')
+        recording_options = ConfigManager.get_config_section('recording_options') or {}
         self.sample_rate = recording_options.get('sample_rate') or 16000
         frame_duration_ms = 30
         frame_size = int(self.sample_rate * (frame_duration_ms / 1000.0))
@@ -141,13 +141,15 @@ class ResultThread(QThread):
         continuous_timeout = ConfigManager.get_config_value('recording_options', 'continuous_timeout')
         recording_mode = recording_options.get('recording_mode') or 'continuous'
 
-        initial_frames_to_skip = int(0.15 * self.sample_rate / frame_size)
+        # ponytail: Windows WASAPI AGC calibrates for 1-5s after stream open — detect when ready
+        WARMUP_ENERGY_THRESHOLD = 50  # peak amplitude below this = device still initializing
+        WARMUP_TIMEOUT_FRAMES = int(5.0 * self.sample_rate / frame_size)
 
         vad = None
+        speech_detected = False
+        silent_frame_count = 0
         if recording_mode in ('voice_activity_detection', 'continuous'):
             vad = webrtcvad.Vad(2)
-            speech_detected = False
-            silent_frame_count = 0
 
         audio_buffer = deque(maxlen=frame_size)
         recording = []
@@ -163,6 +165,29 @@ class ResultThread(QThread):
         with sd.InputStream(samplerate=self.sample_rate, channels=1, dtype='int16',
                             blocksize=frame_size, device=recording_options.get('sound_device'),
                             callback=audio_callback):
+            # Wait for device to deliver real audio (Windows WASAPI warm-up)
+            for _ in range(WARMUP_TIMEOUT_FRAMES):
+                if not (self.is_running and self.is_recording):
+                    return None
+                if not data_ready.wait(timeout=0.5):
+                    continue
+                data_ready.clear()
+                if len(audio_buffer) < frame_size:
+                    continue
+                frame = np.array(list(audio_buffer), dtype=np.int16)
+                audio_buffer.clear()
+                if np.abs(frame).max() > WARMUP_ENERGY_THRESHOLD:
+                    break
+
+            if not (self.is_running and self.is_recording):
+                return None
+
+            # Device ready — bubble appears now, user can speak immediately
+            self.statusSignal.emit('recording', self.use_llm)
+            ConfigManager.console_print('Recording...')
+            # Prepend silence so Whisper doesn't clip the first word
+            recording.extend(np.zeros(int(0.3 * self.sample_rate), dtype=np.int16))
+
             while self.is_running and self.is_recording:
                 data_ready.wait()
                 data_ready.clear()
@@ -173,10 +198,6 @@ class ResultThread(QThread):
                 frame = np.array(list(audio_buffer), dtype=np.int16)
                 audio_buffer.clear()
                 recording.extend(frame)
-
-                if initial_frames_to_skip > 0:
-                    initial_frames_to_skip -= 1
-                    continue
 
                 # Check for speech in the current frame
                 if recording_mode == 'voice_activity_detection' or recording_mode == 'continuous':
@@ -192,8 +213,8 @@ class ResultThread(QThread):
                             silent_frame_count += 1
 
                 # Check for continuous mode silence timeout
-                if (recording_mode == 'continuous' and 
-                    continuous_timeout > 0 and 
+                if (recording_mode == 'continuous' and
+                    continuous_timeout is not None and continuous_timeout > 0 and
                     time.time() - last_speech_time > continuous_timeout):
                     ConfigManager.console_print(f"[DEBUG] No audio detected for {continuous_timeout} seconds. Stopping continuous recording.")
                     self.is_running = False  # Stop the entire thread
@@ -211,7 +232,7 @@ class ResultThread(QThread):
 
         ConfigManager.console_print(f'Recording finished. Size: {audio_data.size} samples, Duration: {duration:.2f} seconds')
 
-        min_duration_ms = recording_options.get('min_duration') or 100
+        min_duration_ms = (recording_options.get('min_duration') if recording_options else None) or 100
         if (duration * 1000) < min_duration_ms:
             ConfigManager.console_print(f'Discarded due to being too short.')
             return None

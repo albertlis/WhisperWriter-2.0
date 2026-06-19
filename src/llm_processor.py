@@ -1,14 +1,10 @@
 import os
 import json
+import importlib
 import requests
 from utils import ConfigManager
 from keyring_manager import KeyringManager
-from openai import OpenAI
-from anthropic import Anthropic
-import google.generativeai as genai
-import importlib
 import ollama
-from groq import Groq
 
 # Check if Ollama is available
 HAS_OLLAMA = importlib.util.find_spec("ollama") is not None
@@ -17,6 +13,7 @@ class LLMProcessor:
     def __init__(self, api_type=None):
         """Initialize the LLM processor."""
         self.config = ConfigManager.get_config_section('llm_post_processing')
+        self.api_key = None
         
         # If api_type is passed, use it; otherwise get from config without assuming a default
         if api_type is None:
@@ -212,6 +209,7 @@ class LLMProcessor:
         return text
         
     def _process_gemini(self, text: str, system_message: str, model: str) -> str:
+        import google.generativeai as genai
         api_key = KeyringManager.get_api_key("gemini")
         ConfigManager.console_print(f"Using Gemini API key: {'[SET]' if api_key else '[NOT SET]'}")
         
@@ -319,7 +317,7 @@ class LLMProcessor:
             ConfigManager.console_print(f"Temperature setting: {temperature}")
             
             response = ollama.chat(
-                model=model,  # Use the passed model parameter
+                model=model,
                 messages=[
                     {
                         "role": "system",
@@ -327,19 +325,22 @@ class LLMProcessor:
                     },
                     {
                         "role": "user",
-                        "content": text
+                        "content": text + " /no_think"
                     }
                 ],
                 options={
                     "temperature": temperature
                 }
             )
-            
-            if not response or 'message' not in response or 'content' not in response['message']:
+
+            # Handle both object-style (ollama>=0.4) and dict-style responses
+            if hasattr(response, 'message'):
+                processed_text = response.message.content.strip()
+            elif response and 'message' in response:
+                processed_text = response['message']['content'].strip()
+            else:
                 ConfigManager.console_print("Error: Unexpected response format from Ollama")
                 return text
-            
-            processed_text = response['message']['content'].strip()
             ConfigManager.console_print(f"Ollama response received:")
             ConfigManager.console_print(f"- Input length: {len(text)}")
             ConfigManager.console_print(f"- Output length: {len(processed_text)}")
@@ -354,6 +355,7 @@ class LLMProcessor:
 
     def _process_groq(self, text: str, system_message: str, model: str) -> str:
         """Process text through Groq's API."""
+        from groq import Groq
         api_key = KeyringManager.get_api_key("groq")
         ConfigManager.console_print(f"Using Groq API key: {'[SET]' if api_key else '[NOT SET]'}")
         
