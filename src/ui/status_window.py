@@ -1,227 +1,265 @@
 import sys
 import os
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer
-from PyQt5.QtGui import QFont, QPixmap, QIcon
-from PyQt5.QtWidgets import QApplication, QLabel, QHBoxLayout, QVBoxLayout
+from typing import override
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from ui.base_window import BaseWindow
+from PyQt6.QtCore import (
+    Qt,
+    pyqtSignal,
+    pyqtSlot,
+    QTimer,
+    QPropertyAnimation,
+    QEasingCurve,
+)
+from PyQt6.QtCore import QRectF
+from PyQt6.QtGui import QFont, QCloseEvent, QPaintEvent, QPainter, QBrush, QColor, QPainterPath
+from PyQt6.QtWidgets import QApplication, QLabel, QHBoxLayout, QSizePolicy
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from ui.base_window import BaseWindow, apply_mica
 from utils import ConfigManager
 
+
+_LABEL_STYLE = "QLabel { background: transparent; border: none; color: #f0f0f0; }"
+_RADIUS = 26
+
+
 class StatusWindow(BaseWindow):
-    statusSignal = pyqtSignal(str, bool)
-    closeSignal = pyqtSignal()
+    statusSignal: pyqtSignal = pyqtSignal(str, bool)
+    closeSignal: pyqtSignal = pyqtSignal()
 
-    def __init__(self):
-        """
-        Initialize the status window.
-        """
-        super().__init__('WhisperWriter Status', 450, 100)
-        self.initStatusUI()
+    def __init__(self) -> None:
+        super().__init__("WhisperWriter Status", 320, 52, show_title_bar=False)
+        self._mica_active: bool = False
+        self._pulse_timer: QTimer = QTimer()
+        self._pulse_timer.timeout.connect(self._update_pulse)
+        self._pulse_alpha: float = 0.3
+        self._pulse_dir: int = 1
+        self._pulse_color: tuple[int, int, int] = (255, 68, 68)
+
+        self._fade_in_anim: QPropertyAnimation = QPropertyAnimation(
+            self, b"windowOpacity"
+        )
+        self._fade_in_anim.setDuration(120)
+        self._fade_in_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        self._fade_out_anim: QPropertyAnimation = QPropertyAnimation(
+            self, b"windowOpacity"
+        )
+        self._fade_out_anim.setDuration(200)
+        self._fade_out_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        _ = self._fade_out_anim.finished.connect(self.hide)
+
+        self._init_status_ui()
         self.statusSignal.connect(self.updateStatus)
-        
-        # Add timer for pulsing effect
-        self.warning_timer = QTimer()
-        self.warning_timer.timeout.connect(self.updateWarningPulse)
-        self.pulse_step = 0
-        self.pulse_direction = 1
 
-    def initStatusUI(self):
-        """
-        Initialize the status user interface.
-        """
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        
-        status_layout = QVBoxLayout()
-        status_layout.setContentsMargins(0, 0, 0, 0)
+    def _init_status_ui(self) -> None:
+        # setWindowFlags recreates the native HWND — must re-apply WA_TranslucentBackground after
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
-        # Main status display (icon + status)
-        top_layout = QHBoxLayout()
-        
-        self.icon_label = QLabel()
-        self.icon_label.setFixedSize(32, 32)
-        microphone_path = os.path.join('assets', 'microphone.png')
-        pencil_path = os.path.join('assets', 'pencil.png')
-        self.microphone_pixmap = QPixmap(microphone_path).scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.pencil_pixmap = QPixmap(pencil_path).scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.icon_label.setPixmap(self.microphone_pixmap)
-        self.icon_label.setAlignment(Qt.AlignCenter)
+        # Dynamic width: shrinks/grows with text; fixed height for pill shape
+        self.setFixedHeight(52)
+        self.setMinimumWidth(180)
+        self.setMaximumWidth(620)
 
-        self.status_label = QLabel('Recording...')
-        self.status_label.setFont(QFont('Segoe UI', 12))
-        
-        # Shortcuts label
-        self.shortcuts_label = QLabel()
-        self.shortcuts_label.setFont(QFont('Segoe UI', 9))
-        self.shortcuts_label.setStyleSheet("color: gray;")
-        self.shortcuts_label.setAlignment(Qt.AlignCenter)
-        self.shortcuts_label.hide()  # Hidden by default
+        self.main_widget.setObjectName("statusContent")
+        self.main_layout.setContentsMargins(16, 0, 16, 0)
+        self.main_layout.setSpacing(0)
 
-        top_layout.addStretch(1)
-        top_layout.addWidget(self.icon_label)
-        top_layout.addWidget(self.status_label)
-        top_layout.addStretch(1)
+        # Prevent Qt from auto-filling main_widget background (would cover our rounded paintEvent)
+        self.main_widget.setAutoFillBackground(False)
 
-        status_layout.addLayout(top_layout)
-        status_layout.addWidget(self.shortcuts_label)
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        row.setContentsMargins(0, 0, 0, 0)
 
-        self.main_layout.addLayout(status_layout)
-        
-    def show(self):
-        """
-        Position the window in the bottom center of the screen and show it.
-        """
+        self.icon_label: QLabel = QLabel("🎙")
+        self.icon_label.setFont(QFont("Segoe UI Emoji", 15))
+        self.icon_label.setFixedSize(26, 26)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setStyleSheet(_LABEL_STYLE)
+
+        self.status_label: QLabel = QLabel("Recording...")
+        self.status_label.setFont(QFont("Segoe UI", 12))
+        self.status_label.setStyleSheet(_LABEL_STYLE)
+        self.status_label.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
+        )
+
+        self.pulse_dot: QLabel = QLabel()
+        self.pulse_dot.setFixedSize(10, 10)
+        self.pulse_dot.setStyleSheet(
+            "QLabel { background: rgba(255,68,68,0.3); border-radius: 5px; }"
+        )
+        self.pulse_dot.hide()
+
+        row.addWidget(self.icon_label)
+        row.addWidget(self.status_label)
+        row.addStretch()
+        row.addWidget(self.pulse_dot)
+
+        self.main_layout.addLayout(row)
+
+    @override
+    def paintEvent(self, a0: QPaintEvent | None) -> None:
+        # Draw rounded rect directly — area outside path is transparent (WA_TranslucentBackground)
+        # With Mica: semi-transparent tint over DWM blur. Without: opaque dark pill.
+        alpha = 55 if self._mica_active else 230
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), _RADIUS, _RADIUS)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QBrush(QColor(28, 28, 38, alpha)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
+
+    def _position_window(self) -> None:
         screen = QApplication.primaryScreen()
-        screen_geometry = screen.geometry()
-        screen_width = screen_geometry.width()
-        screen_height = screen_geometry.height()
-        window_width = self.width()
-        window_height = self.height()
-
-        x = (screen_width - window_width) // 2
-        y = screen_height - window_height - 120
-
-        self.move(x, y)
-        super().show()
-        
-    def closeEvent(self, event):
-        """
-        Emit the close signal when the window is closed.
-        """
-        self.closeSignal.emit()
-        super().closeEvent(event)
-
-    def format_key_combo(self, key_combo: str) -> str:
-        """Convert key combination to symbolic representation."""
-        # Return empty string if key_combo is None
-        if not key_combo:
-            return ''
-
-        key_map = {
-            'ctrl': 'CTRL',
-            'shift': 'SHIFT',
-            'alt': 'ALT',
-            'space': 'SPACE',
-            'win': 'WIN',
-            '+': '',  # Remove the plus signs between keys
-        }
-        
-        parts = key_combo.lower().split('+')
-        return ''.join(key_map.get(part, part.upper()) for part in parts)
-
-    def updateWarningPulse(self):
-        """Update the warning background color for pulsing effect"""
-        if not self.isVisible():
-            self.warning_timer.stop()
+        if screen is None:
             return
-            
-        # Pulse between 20% and 100% saturation and vary lightness for dramatic effect
-        self.pulse_step += self.pulse_direction
-        if self.pulse_step > 80 or self.pulse_step < 0:  # Much wider range
-            self.pulse_direction *= -1
-            self.pulse_step += self.pulse_direction
-            
-        # Calculate color based on pulse step
-        saturation = 20 + self.pulse_step  # Much wider range from 20% to 100%
-        lightness = 100 - (self.pulse_step / 2)  # Vary lightness from 60% to 100%
-        
-        # print(f"[DEBUG] Pulse - Step: {self.pulse_step}, Saturation: {saturation}%, Lightness: {lightness}%")
-        
-        self.setStyleSheet(f"""
-            QWidget {{
-                background-color: hsla(48, {saturation}%, {lightness}%, 1.0);
-                border: 1px solid #FFE5A3;
-                border-radius: 5px;
-            }}
-            QLabel {{
-                background-color: transparent;
-                border: none;
-            }}
-            QPushButton {{
-                background-color: transparent;
-                border: none;
-            }}
-        """)
+        geo = screen.geometry()
+        # Fit width to text content (icon + padding + text + padding + dot)
+        hint = self.status_label.sizeHint().width() + 24 + 10 + 32
+        w = max(180, min(hint, 620))
+        self.resize(w, 52)
+        x = (geo.width() - w) // 2
+        y = geo.height() - 52 - 80
+        self.move(x, y)
+
+    def fade_in(self) -> None:
+        self._position_window()
+        if self._fade_out_anim.state() != QPropertyAnimation.State.Stopped:
+            self._fade_out_anim.stop()
+        self.setWindowOpacity(0.0)
+        super(BaseWindow, self).show()
+        if not self._mica_active:
+            self._mica_active = apply_mica(int(self.winId()), backdrop_type=3)
+            self.update()  # repaint with correct alpha for Mica vs fallback
+        self._fade_in_anim.setStartValue(0.0)
+        self._fade_in_anim.setEndValue(1.0)
+        self._fade_in_anim.start()
+
+    def fade_out(self) -> None:
+        if not self.isVisible():
+            return
+        if self._fade_in_anim.state() != QPropertyAnimation.State.Stopped:
+            self._fade_in_anim.stop()
+        self._pulse_timer.stop()
+        self.pulse_dot.hide()
+        self._fade_out_anim.setStartValue(self.windowOpacity())
+        self._fade_out_anim.setEndValue(0.0)
+        self._fade_out_anim.start()
+
+    def _start_pulse(self, color: tuple[int, int, int] = (255, 68, 68)) -> None:
+        self._pulse_color = color
+        self._pulse_alpha = 0.3
+        self._pulse_dir = 1
+        self.pulse_dot.show()
+        self._pulse_timer.start(30)
+
+    def _update_pulse(self) -> None:
+        self._pulse_alpha += self._pulse_dir * 0.04
+        if self._pulse_alpha >= 1.0:
+            self._pulse_alpha = 1.0
+            self._pulse_dir = -1
+        elif self._pulse_alpha <= 0.3:
+            self._pulse_alpha = 0.3
+            self._pulse_dir = 1
+        r, g, b = self._pulse_color
+        self.pulse_dot.setStyleSheet(
+            f"QLabel {{ background: rgba({r},{g},{b},{self._pulse_alpha:.2f}); border-radius: 5px; }}"
+        )
+
+    @override
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
+        self.closeSignal.emit()
+        super().closeEvent(a0)
 
     @pyqtSlot(str, bool)
-    def updateStatus(self, status, use_llm=False):
-        """
-        Update the status window based on the given status.
-        """
-        if status == 'recording':
-            self.icon_label.setPixmap(self.microphone_pixmap)
-            
-            # Check for continuous mode and remote API usage
-            continuous_mode = ConfigManager.get_config_value('recording_options', 'recording_mode') == 'continuous'
-            using_api = ConfigManager.get_config_value('model_options', 'use_api')
-            allow_continuous_api = ConfigManager.get_config_value('recording_options', 'allow_continuous_api')
-            
-            # Only check LLM settings if LLM mode is active
+    def updateStatus(self, status: str, use_llm: bool = False) -> None:
+        if status == "recording":
+            self.icon_label.setText("🎙")
+
+            continuous_mode = (
+                ConfigManager.get_config_value("recording_options", "recording_mode")
+                == "continuous"
+            )
+            using_api = ConfigManager.get_config_value("model_options", "use_api")
+            allow_continuous_api = ConfigManager.get_config_value(
+                "recording_options", "allow_continuous_api"
+            )
+
             using_remote_api = using_api
             if use_llm:
-                llm_type = ConfigManager.get_config_value('llm_post_processing', 'api_type')
-                using_remote_api = using_remote_api or (llm_type != 'ollama')
-            
-            # If continuous mode and remote API are being used but not allowed, force stop
+                llm_type = ConfigManager.get_config_value(
+                    "llm_post_processing", "api_type"
+                )
+                using_remote_api = using_remote_api or (llm_type != "ollama")
+
             if continuous_mode and using_remote_api and not allow_continuous_api:
-                print("[DEBUG] Continuous mode with remote API not allowed. Stopping recording.")
-                self.closeSignal.emit()  # This will trigger stop_result_thread in main.py
+                self.closeSignal.emit()
                 return
-            
+
             if continuous_mode and using_remote_api:
-                print("[DEBUG] Setting warning status for continuous remote API usage")
-                self.status_label.setText('⚠️ Continuous Recording (Remote API) ⚠️')
-                self.status_label.setStyleSheet("")
-                self.pulse_step = 0
-                self.pulse_direction = 1
-                self.warning_timer.start(15)
+                self.status_label.setText("⚠ Continuous Recording (Remote API)")
+                self._start_pulse((255, 140, 0))
             else:
-                print("[DEBUG] Setting normal recording status")
-                self.status_label.setText('Recording...')
-                self.status_label.setStyleSheet("")  # Reset label color
-                self.setStyleSheet("")  # Reset window style
-                self.warning_timer.stop()  # Stop pulsing effect
-            
-            # Get shortcut keys and convert to symbols
-            activation_key = self.format_key_combo(ConfigManager.get_config_value('recording_options', 'activation_key'))
-            cleanup_key = self.format_key_combo(ConfigManager.get_config_value('recording_options', 'llm_cleanup_key'))
-            instruction_key = self.format_key_combo(ConfigManager.get_config_value('recording_options', 'llm_instruction_key'))
-            
-            # Format shortcuts with emojis and symbolic keys
-            shortcuts_text = f"⏹️ {activation_key} | 🧹 {cleanup_key} | 💭 {instruction_key}"
-            self.shortcuts_label.setText(shortcuts_text)
-            # self.shortcuts_label.show()
-            self.show()
-            
-        elif status == 'transcribing':
-            self.icon_label.setPixmap(self.pencil_pixmap)
-            self.status_label.setText('Transcribing...')
-            self.shortcuts_label.hide()
-            
-        elif status == 'processing_llm_cleanup':
-            self.icon_label.setPixmap(self.pencil_pixmap)
-            api_type = ConfigManager.get_config_value('llm_post_processing', 'api_type') or 'LLM'
-            self.status_label.setText(f'Cleaning up text with {api_type.upper()}...')
-            self.shortcuts_label.hide()
-            
-        elif status == 'processing_llm_instruction':
-            self.icon_label.setPixmap(self.pencil_pixmap)
-            api_type = ConfigManager.get_config_value('llm_post_processing', 'api_type') or 'LLM'
-            self.status_label.setText(f'Processing instruction with {api_type.upper()}...')
-            self.shortcuts_label.hide()
+                self.status_label.setText("Recording...")
+                self._start_pulse((255, 68, 68))
 
-        if status in ('idle', 'error', 'cancel'):
-            self.close()
+            self.fade_in()
+
+        elif status == "warming_up":
+            self.icon_label.setText("🎙")
+            self.status_label.setText("Preparing microphone...")
+            self._pulse_timer.stop()
+            self.pulse_dot.hide()
+            self.fade_in()
+
+        elif status == "transcribing":
+            self.icon_label.setText("✍")
+            self.status_label.setText("Transcribing...")
+            self._pulse_timer.stop()
+            self.pulse_dot.hide()
+            if not self.isVisible():
+                self.fade_in()
+
+        elif status == "processing_llm_cleanup":
+            self.icon_label.setText("✍")
+            api_type = (
+                ConfigManager.get_config_value("llm_post_processing", "api_type")
+                or "LLM"
+            )
+            self.status_label.setText(f"Cleaning up with {api_type.upper()}...")
+            self._pulse_timer.stop()
+            self.pulse_dot.hide()
+            if not self.isVisible():
+                self.fade_in()
+
+        elif status == "processing_llm_instruction":
+            self.icon_label.setText("✍")
+            api_type = (
+                ConfigManager.get_config_value("llm_post_processing", "api_type")
+                or "LLM"
+            )
+            self.status_label.setText(f"Processing with {api_type.upper()}...")
+            self._pulse_timer.stop()
+            self.pulse_dot.hide()
+            if not self.isVisible():
+                self.fade_in()
+
+        if status in ("idle", "error", "cancel"):
+            self.fade_out()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
-    status_window = StatusWindow()
-    status_window.show()
-
-    # Simulate status updates
-    QTimer.singleShot(3000, lambda: status_window.statusSignal.emit('transcribing', False))
-    QTimer.singleShot(6000, lambda: status_window.statusSignal.emit('idle', False))
-    
-    sys.exit(app.exec_())
+    w = StatusWindow()
+    w.statusSignal.emit("recording", False)
+    QTimer.singleShot(3000, lambda: w.statusSignal.emit("transcribing", False))
+    QTimer.singleShot(5000, lambda: w.statusSignal.emit("idle", False))
+    sys.exit(app.exec())

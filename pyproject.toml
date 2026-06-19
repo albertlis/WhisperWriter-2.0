@@ -17,7 +17,7 @@ requires-python = ">=3.12"
 
 dependencies = [
     # Core dependencies
-    "PyQt5>=5.15.10",
+    "PyQt6",
     "pynput>=1.7.6",
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",

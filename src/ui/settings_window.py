@@ -1,20 +1,20 @@
 import os
 import sys
-from dotenv import set_key, load_dotenv
-from PyQt5.QtWidgets import (
+from dotenv import load_dotenv
+from PyQt6.QtWidgets import (
     QApplication, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox,
-    QMessageBox, QTabWidget, QWidget, QSizePolicy, QSpacerItem, QToolButton, QStyle, QFileDialog, QTextEdit, QSpinBox, QScrollArea
+    QMessageBox, QTabWidget, QWidget, QSizePolicy, QSpacerItem, QFileDialog, QTextEdit, QSpinBox, QScrollArea
 )
-from PyQt5.QtCore import Qt, QCoreApplication, QProcess, pyqtSignal, QMetaObject, QThread, QTimer
-from PyQt5.QtGui import QFont, QIntValidator
+from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtGui import QFont, QIntValidator
 import sounddevice as sd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ui.base_window import BaseWindow
+from ui.hotkey_widget import HotkeyWidget
 from utils import ConfigManager
 from keyring_manager import KeyringManager
 from llm_processor import LLMProcessor
-from ui.model_refresh_worker import ModelRefreshWorker
 
 load_dotenv()
 
@@ -50,6 +50,12 @@ class SettingsWindow(BaseWindow):
 
     def init_settings_ui(self):
         """Initialize the settings user interface."""
+        _qss_path = os.path.join(os.path.dirname(__file__), 'styles.qss')
+        try:
+            with open(_qss_path, encoding='utf-8') as _f:
+                self.setStyleSheet(_f.read())
+        except FileNotFoundError:
+            pass
         self.tabs = QTabWidget()
         self.tabs.setFont(QFont('Segoe UI', 11))
         self.main_layout.addWidget(self.tabs)
@@ -71,8 +77,8 @@ class SettingsWindow(BaseWindow):
             # Create a scroll area for the tab content
             scroll_area = QScrollArea()
             scroll_area.setWidgetResizable(True)
-            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             
             # Create a container widget for the scroll area
             scroll_content = QWidget()
@@ -83,7 +89,7 @@ class SettingsWindow(BaseWindow):
             self.create_settings_widgets(tab_layout, category, settings)
             
             # Add spacer at the bottom
-            tab_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+            tab_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
             
             # Set the scroll content as the widget for the scroll area
             scroll_area.setWidget(scroll_content)
@@ -108,16 +114,26 @@ class SettingsWindow(BaseWindow):
                         self.add_setting_widget(layout, key, meta, category, sub_category)
 
     def create_buttons(self):
-        """Create reset and save buttons."""
-        reset_button = QPushButton('Reset to saved settings')
+        """Create reset, save, and close buttons."""
+        btn_row = QHBoxLayout()
+
+        reset_button = QPushButton('Reset')
         reset_button.setFont(QFont('Segoe UI', 11))
         reset_button.clicked.connect(self.reset_settings)
-        self.main_layout.addWidget(reset_button)
+
+        close_button = QPushButton('Close')
+        close_button.setFont(QFont('Segoe UI', 11))
+        close_button.clicked.connect(self.handleCloseButton)
 
         save_button = QPushButton('Save')
         save_button.setFont(QFont('Segoe UI', 11))
         save_button.clicked.connect(self.save_settings)
-        self.main_layout.addWidget(save_button)
+
+        btn_row.addWidget(reset_button)
+        btn_row.addWidget(close_button)
+        btn_row.addStretch()
+        btn_row.addWidget(save_button)
+        self.main_layout.addLayout(btn_row)
 
     def add_setting_widget(self, layout, key, meta, category, sub_category=None):
         """Add a setting widget to the layout."""
@@ -160,22 +176,25 @@ class SettingsWindow(BaseWindow):
             widget.setFont(QFont('Segoe UI', 11))
 
         label.setFont(QFont('Segoe UI', 11))
-        label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-
-        help_button = self.create_help_button(meta.get('description', ''))
+        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         item_layout.addWidget(label)
         item_layout.addWidget(widget)
-        item_layout.addWidget(help_button)
         layout.addLayout(item_layout)
 
-        # Set object names for the widget, label, and help button
+        description = meta.get('description', '')
+        if description:
+            desc_label = QLabel(description)
+            desc_label.setWordWrap(True)
+            desc_label.setObjectName('settingDescription')
+            desc_label.setContentsMargins(0, 0, 0, 6)
+            layout.addWidget(desc_label)
+
+        # Set object names for the widget and label
         widget_name = f"{category}_{sub_category}_{key}_input" if sub_category else f"{category}_{key}_input"
         label_name = f"{category}_{sub_category}_{key}_label" if sub_category else f"{category}_{key}_label"
-        help_name = f"{category}_{sub_category}_{key}_help" if sub_category else f"{category}_{key}_help"
-        
+
         label.setObjectName(label_name)
-        help_button.setObjectName(help_name)
         
         if isinstance(widget, QWidget):
             widget.setObjectName(widget_name)
@@ -189,6 +208,12 @@ class SettingsWindow(BaseWindow):
         """Create a widget based on the meta type."""
         meta_type = meta.get('type')
         current_value = self.get_config_value(category, sub_category, key, meta)
+
+        _HOTKEY_KEYS = {'activation_key', 'llm_cleanup_key', 'llm_instruction_key', 'text_cleanup_key'}
+        if category == 'recording_options' and key in _HOTKEY_KEYS:
+            widget = HotkeyWidget()
+            widget.setText(str(current_value) if current_value else '')
+            return widget
 
         # Special handling for find replace file
         if category == 'post_processing' and key == 'find_replace_file':
@@ -316,7 +341,7 @@ class SettingsWindow(BaseWindow):
         widget = QLineEdit(value)
         
         if password_mode:
-            widget.setEchoMode(QLineEdit.Password)
+            widget.setEchoMode(QLineEdit.EchoMode.Password)
             # Load appropriate API key from keyring
             if key == 'openai_transcription_api_key':
                 widget.setText(KeyringManager.get_api_key("openai_transcription") or value)
@@ -337,16 +362,6 @@ class SettingsWindow(BaseWindow):
         
         return widget
 
-    def create_help_button(self, description):
-        help_button = QToolButton()
-        help_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxQuestion))
-        help_button.setAutoRaise(True)
-        help_button.setToolTip(description)
-        help_button.setCursor(Qt.PointingHandCursor)
-        help_button.setFocusPolicy(Qt.TabFocus)
-        help_button.clicked.connect(lambda: self.show_description(description))
-        return help_button
-
     def get_config_value(self, category, sub_category, key, meta):
         if sub_category:
             return ConfigManager.get_config_value(category, sub_category, key) or meta['value']
@@ -356,10 +371,6 @@ class SettingsWindow(BaseWindow):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Whisper Model File", "", "Model Files (*.bin);;All Files (*)")
         if file_path:
             widget.setText(file_path)
-
-    def show_description(self, description):
-        """Show a description dialog."""
-        QMessageBox.information(self, 'Description', description)
 
     def save_settings(self):
         """Save the settings to the config file and keyring."""
@@ -401,6 +412,14 @@ class SettingsWindow(BaseWindow):
 
     def save_setting(self, widget, category, sub_category, key, meta):
         """Save a single setting to the config."""
+        if isinstance(widget, HotkeyWidget):
+            value = widget.text() or None
+            if sub_category:
+                ConfigManager.set_config_value(value, category, sub_category, key)
+            else:
+                ConfigManager.set_config_value(value, category, key)
+            return
+
         if isinstance(widget, QWidget) and widget.layout():
             layout = widget.layout()
             text_edit = None
@@ -503,6 +522,9 @@ class SettingsWindow(BaseWindow):
 
     def set_widget_value(self, widget, value, value_type):
         """Set the value of the widget."""
+        if isinstance(widget, HotkeyWidget):
+            widget.setText(str(value) if value is not None else '')
+            return
         if isinstance(widget, QCheckBox):
             widget.setChecked(value)
         elif isinstance(widget, QComboBox):
@@ -550,26 +572,29 @@ class SettingsWindow(BaseWindow):
             
             # Also toggle visibility of the corresponding label and help button
             label = self.findChild(QLabel, f"{category}_{sub_category}_{key}_label")
-            help_button = self.findChild(QToolButton, f"{category}_{sub_category}_{key}_help")
-            
+
             if label:
                 label.setVisible(use_api if sub_category == 'api' else not use_api)
-            if help_button:
-                help_button.setVisible(use_api if sub_category == 'api' else not use_api)
 
-    def iterate_settings(self, func):
-        """Iterate over all settings and apply a function to each."""
+    def _iter_settings_gen(self):
         for category, settings in self.schema.items():
             for sub_category, sub_settings in settings.items():
                 if isinstance(sub_settings, dict) and 'value' in sub_settings:
                     widget = self.findChild(QWidget, f"{category}_{sub_category}_input")
                     if widget:
-                        func(widget, category, None, sub_category, sub_settings)
+                        yield widget, category, None, sub_category, sub_settings
                 else:
                     for key, meta in sub_settings.items():
                         widget = self.findChild(QWidget, f"{category}_{sub_category}_{key}_input")
                         if widget:
-                            func(widget, category, sub_category, key, meta)
+                            yield widget, category, sub_category, key, meta
+
+    def iterate_settings(self, func=None):
+        """Iterate over all settings, optionally applying func to each widget."""
+        if func is None:
+            return self._iter_settings_gen()
+        for item in self._iter_settings_gen():
+            func(*item)
 
     def handleCloseButton(self):
         """Override base window close button handler to hide instead of close."""
@@ -804,7 +829,7 @@ class SettingsWindow(BaseWindow):
                             'channels': device['max_input_channels'],
                             'default': device is sd.default.device[0]
                         })
-                except sd.PortAudioError as e:
+                except sd.PortAudioError:
                     # ConfigManager.console_print(f"Device {i}: {device['name']} not suitable for recording: {str(e)}")
                     continue
                 

@@ -428,6 +428,11 @@ class KeyListener:
             'meta': frozenset({KeyCode.META_LEFT, KeyCode.META_RIGHT}),
             'lmeta': KeyCode.META_LEFT,
             'rmeta': KeyCode.META_RIGHT,
+            'win': frozenset({KeyCode.META_LEFT, KeyCode.META_RIGHT}),
+            'lwin': KeyCode.META_LEFT,
+            'rwin': KeyCode.META_RIGHT,
+            'super': frozenset({KeyCode.META_LEFT, KeyCode.META_RIGHT}),
+            'cmd': frozenset({KeyCode.META_LEFT, KeyCode.META_RIGHT}),
         }
 
         # Add number key mappings
@@ -944,6 +949,7 @@ class PynputBackend(InputBackend):
 
     def start(self):
         """Start listening for keyboard and mouse events."""
+        self.stop()  # ponytail: idempotent — stops leaked listeners from double-start bug
         if self.keyboard is None or self.mouse is None:
             from pynput import keyboard, mouse
             self.keyboard = keyboard

@@ -3,9 +3,9 @@ import sys
 import time
 from audioplayer import AudioPlayer
 from pynput.keyboard import Controller, Key
-from PyQt5.QtCore import QObject, QProcess
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QMessageBox, QLineEdit
+from PyQt6.QtCore import QObject, QProcess
+from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox, QLineEdit
 import win32clipboard
 import win32con
 
@@ -76,17 +76,17 @@ class WhisperWriterApp(QObject):
         """
         self.tray_icon = QSystemTrayIcon(QIcon(os.path.join('assets', 'ww-logo.png')), self.app)
 
-        tray_menu = QMenu()
+        self.tray_menu = QMenu()
 
         settings_action = QAction('Settings', self.app)
         settings_action.triggered.connect(self.settings_window.show)
-        tray_menu.addAction(settings_action)
+        self.tray_menu.addAction(settings_action)
 
         exit_action = QAction('Exit', self.app)
         exit_action.triggered.connect(self.exit_app)
-        tray_menu.addAction(exit_action)
+        self.tray_menu.addAction(exit_action)
 
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.show()
 
     def cleanup(self):
@@ -105,8 +105,8 @@ class WhisperWriterApp(QObject):
     def restart_app(self):
         """Restart the application to apply the new settings."""
         self.cleanup()
-        QApplication.quit()
         QProcess.startDetached(sys.executable, sys.argv)
+        QApplication.quit()
 
     def on_settings_closed(self):
         """
@@ -407,7 +407,7 @@ class WhisperWriterApp(QObject):
         """
         Start the application.
         """
-        sys.exit(self.app.exec_())
+        sys.exit(self.app.exec())
 
 
 if __name__ == '__main__':
