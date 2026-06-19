@@ -325,9 +325,10 @@ class LLMProcessor:
                     },
                     {
                         "role": "user",
-                        "content": text + " /no_think"
+                        "content": text
                     }
                 ],
+                think=False,  # ponytail: disables thinking at API level (ollama>=0.4, Qwen3/QwQ/R1)
                 options={
                     "temperature": temperature
                 }
@@ -335,12 +336,19 @@ class LLMProcessor:
 
             # Handle both object-style (ollama>=0.4) and dict-style responses
             if hasattr(response, 'message'):
-                processed_text = response.message.content.strip()
+                raw = response.message.content.strip()
             elif response and 'message' in response:
-                processed_text = response['message']['content'].strip()
+                raw = response['message']['content'].strip()
             else:
                 ConfigManager.console_print("Error: Unexpected response format from Ollama")
                 return text
+
+            # Strip think blocks in case model ignores think=False
+            import re
+            processed_text = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+            if len(raw) != len(processed_text):
+                ConfigManager.console_print(f"Stripped think block ({len(raw) - len(processed_text)} chars)")
+
             ConfigManager.console_print(f"Ollama response received:")
             ConfigManager.console_print(f"- Input length: {len(text)}")
             ConfigManager.console_print(f"- Output length: {len(processed_text)}")
