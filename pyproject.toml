@@ -16,49 +16,54 @@ authors = [
 requires-python = ">=3.12"
 
 dependencies = [
-    # Core dependencies
+    # Core
     "PyQt6",
     "pynput>=1.7.6",
-    "sounddevice>=0.4.6",
+    "sounddevice>=0.5.0",
     "soundfile>=0.12.1",
-    "numpy>=1.26.4",
-    "PyYAML>=6.0.1",
-    "requests>=2.31.0",
-    "tqdm>=4.65.0",
+    "numpy>=2.0.0",
+    "PyYAML>=6.0.2",
+    "requests>=2.32.0",
+    "tqdm>=4.66.0",
     "audioplayer>=0.6",
-    "python-dotenv>=1.0.0",
-    "keyring>=24.3.0",
+    "python-dotenv>=1.0.1",
+    "keyring>=25.0.0",
     "webrtcvad-wheels>=2.0.11.post1",
     "srt>=3.5.3",
-    
-    # Windows-specific dependencies
+
+    # Windows-specific
     "pycaw>=20240210",
     "pywin32>=308",
     "comtypes>=1.4.10",
-    
-    # API integrations
-    "openai>=1.28.0",
-    "anthropic>=0.45.2",
-    "groq>=0.18.0",
-    "google-generativeai>=0.8.4",
-    "google-api-core>=2.24.1",
-    "google-auth>=2.38.0",
-    "googleapis-common-protos>=1.67.0",
 
-    # Local transcription and LLM support
-    # Run 'pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126' AFTER 'pip install .' to install CUDA-compatible versions of torch and torchaudio
-    "torch==2.6.0",
-    "torchaudio==2.6.0",
-    "faster-whisper>=1.1.1",
-    "ctranslate2>=4.5.0",
-    "vosk>=0.3.45",
+    # API integrations
+    "openai>=1.50.0",
+    "anthropic>=0.50.0",
+    "groq>=0.18.0",
     "ollama>=0.4.7",
-    
-    # Development tools
-    "pytest>=8.0.0",
-    "black>=24.1.1",
-    "flake8>=7.0.0",
-    "pip-tools>=7.3.0",
+    "google-generativeai>=0.8.4",
+    "google-api-core>=2.24.1,<2.30.0",
+    "google-auth>=2.40.0",
+    "googleapis-common-protos>=1.67.0",
+]
+
+[project.optional-dependencies]
+# Local transcription / LLM — GPU stack installed separately via:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+local = [
+    "torch>=2.12.0",
+    "torchaudio>=2.11.0",
+    "faster-whisper>=1.1.1",
+    "ctranslate2>=4.6.0",
+    "vosk>=0.3.45",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2.0",
+    "black>=24.4.0",
+    "flake8>=7.1.0",
+    "pip-tools>=7.4.0",
     "pyinstaller>=6.12.0",
 ]
 

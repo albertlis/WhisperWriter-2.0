@@ -1,3 +1,3 @@
 @echo off
-cd /d D:\Tools\ww-llm
+cd /d "%~dp0"
 uv run python run.py

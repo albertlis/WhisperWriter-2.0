@@ -106,9 +106,9 @@ class WhisperWriterApp(QObject):
         self.tray_icon.show()
 
     def cleanup(self):
-        if self.key_listener:
+        if getattr(self, 'key_listener', None):
             self.key_listener.stop()
-        if self.input_simulator:
+        if getattr(self, 'input_simulator', None):
             self.input_simulator.cleanup()
         if getattr(self, '_mic_stream', None) is not None:
             try:
@@ -294,12 +294,10 @@ class WhisperWriterApp(QObject):
 
             if ConfigManager.get_config_value('recording_options', 'recording_mode') == 'continuous':
                 self.start_result_thread()
-            else:
-                self.key_listener.start()
 
         finally:
             # Re-enable key listener
-            if self.key_listener:
+            if getattr(self, 'key_listener', None):
                 self.key_listener.start()
 
     def handle_text_cleanup(self):

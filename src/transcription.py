@@ -477,7 +477,7 @@ def transcribe(audio_data, local_model=None):
             ConfigManager.console_print(f"Using local Whisper model: {model_name} on {device}")
             transcription = transcribe_local(audio_data, local_model)
     else:
-        ConfigManager.console_print("Using OpenAI Whisper API for transcription (faster-whisper not available)")
+        ConfigManager.console_print("faster-whisper not available, falling back to API transcription")
         transcription = transcribe_api(audio_data)
 
     return post_process_transcription(transcription)
