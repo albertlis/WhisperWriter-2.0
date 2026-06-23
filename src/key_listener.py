@@ -383,9 +383,18 @@ class KeyListener:
     def start(self):
         """Start the active backend."""
         if self.active_backend:
+            self._reset_chords()
             self.active_backend.start()
         else:
             raise RuntimeError("No active backend selected")
+
+    def _reset_chords(self):
+        """Clear stale pressed_keys state so released-while-stopped keys don't ghost."""
+        for chord in (self.main_key_chord, self.llm_key_chord,
+                      self.llm_instruction_key_chord, self.text_cleanup_chord):
+            if chord:
+                chord.pressed_keys.clear()
+                chord.is_recording = False
 
     def stop(self):
         """Stop the active backend."""

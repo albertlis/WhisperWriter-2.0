@@ -10,7 +10,7 @@ import win32clipboard
 import win32con
 
 from key_listener import KeyListener
-from result_thread import ResultThread
+from result_thread import ResultThread, SharedMicStream
 from ui.main_window import MainWindow
 from ui.settings_window import SettingsWindow
 from ui.status_window import StatusWindow
@@ -65,6 +65,22 @@ class WhisperWriterApp(QObject):
         self.result_thread = None
         self.llm_processor = LLMProcessor() if ConfigManager.get_config_value('llm_post_processing', 'enabled') else None
 
+        # Close previous stream if initialize_components() is called a second time (on_settings_closed path)
+        _prev = getattr(self, '_mic_stream', None)
+        if _prev is not None:
+            try:
+                _prev.close()
+            except Exception:
+                pass
+        self._mic_stream = None
+        try:
+            _ro = ConfigManager.get_config_section('recording_options') or {}
+            _sr = _ro.get('sample_rate') or 16000
+            self._mic_stream = SharedMicStream(_sr, int(_sr * 30 / 1000), _ro.get('sound_device'))
+        except Exception as e:
+            ConfigManager.console_print(f"Shared mic stream failed, cold-open fallback active: {e}")
+            self._mic_stream = None
+
         if not ConfigManager.get_config_value('misc', 'hide_status_window'):
             self.status_window = StatusWindow()
 
@@ -94,6 +110,11 @@ class WhisperWriterApp(QObject):
             self.key_listener.stop()
         if self.input_simulator:
             self.input_simulator.cleanup()
+        if getattr(self, '_mic_stream', None) is not None:
+            try:
+                self._mic_stream.close()
+            except Exception:
+                pass
 
     def exit_app(self):
         """
@@ -192,7 +213,7 @@ class WhisperWriterApp(QObject):
         if self.result_thread and self.result_thread.isRunning():
             return
 
-        self.result_thread = ResultThread(self.local_model, self.use_llm)
+        self.result_thread = ResultThread(self.local_model, self.use_llm, getattr(self, '_mic_stream', None))
         if not ConfigManager.get_config_value('misc', 'hide_status_window'):
             self.result_thread.statusSignal.connect(self.status_window.updateStatus)
             self.status_window.closeSignal.connect(self.stop_result_thread)
