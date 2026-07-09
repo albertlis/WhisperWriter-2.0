@@ -26,6 +26,18 @@ class WhisperWriterApp(QObject):
         Initialize the application, opening settings window if no configuration file is found.
         """
         super().__init__()
+        # Initialize all instance vars before any listener/callback can fire
+        self.input_simulator: InputSimulator | None = None
+        self.key_listener: KeyListener | None = None
+        self.local_model = None
+        self.result_thread: ResultThread | None = None
+        self.llm_processor: LLMProcessor | None = None
+        self._mic_stream: SharedMicStream | None = None
+        self.status_window: StatusWindow | None = None
+        self.tray_icon: QSystemTrayIcon | None = None
+        self.use_llm: bool = False
+        self.is_instruction_mode: bool = False
+
         self.app = QApplication(sys.argv)
         self.app.setWindowIcon(QIcon(os.path.join('assets', 'ww-logo.png')))
 
@@ -73,13 +85,14 @@ class WhisperWriterApp(QObject):
             except Exception:
                 pass
         self._mic_stream = None
-        try:
-            _ro = ConfigManager.get_config_section('recording_options') or {}
-            _sr = _ro.get('sample_rate') or 16000
-            self._mic_stream = SharedMicStream(_sr, int(_sr * 30 / 1000), _ro.get('sound_device'))
-        except Exception as e:
-            ConfigManager.console_print(f"Shared mic stream failed, cold-open fallback active: {e}")
-            self._mic_stream = None
+        if ConfigManager.get_config_value('misc', 'fast_start_mic'):
+            try:
+                _ro = ConfigManager.get_config_section('recording_options') or {}
+                _sr = _ro.get('sample_rate') or 16000
+                self._mic_stream = SharedMicStream(_sr, int(_sr * 30 / 1000), _ro.get('sound_device'))
+            except Exception as e:
+                ConfigManager.console_print(f"Shared mic stream failed, cold-open fallback active: {e}")
+                self._mic_stream = None
 
         if not ConfigManager.get_config_value('misc', 'hide_status_window'):
             self.status_window = StatusWindow()
@@ -371,7 +384,7 @@ class WhisperWriterApp(QObject):
                     # First set the cleaned text to clipboard
                     win32clipboard.OpenClipboard()
                     win32clipboard.EmptyClipboard()
-                    win32clipboard.SetClipboardText(cleaned_text)
+                    win32clipboard.SetClipboardText(cleaned_text, win32con.CF_UNICODETEXT)
                     win32clipboard.CloseClipboard()
                     
                     try:
