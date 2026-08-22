@@ -60,8 +60,13 @@ class InputSimulator:
         Args:
             text (str): The text to type.
         """
-        self._paste_with_clipboard_preservation(text)
-        return
+        _raw = ConfigManager.get_config_value('post_processing', 'clipboard_threshold')
+        char_threshold = _raw if _raw is not None else 1000
+
+        # Use clipboard when text meets or exceeds threshold (0 = always clipboard)
+        if char_threshold == 0 or len(text) >= char_threshold:
+            self._paste_with_clipboard_preservation(text)
+            return
 
         # Use regular keystroke simulation for shorter text
         interval = ConfigManager.get_config_value('post_processing', 'writing_key_press_delay')
@@ -97,7 +102,7 @@ class InputSimulator:
                 
             # Clear clipboard and set our text
             win32clipboard.EmptyClipboard()
-            win32clipboard.SetClipboardText(text)
+            win32clipboard.SetClipboardText(text, win32con.CF_UNICODETEXT)
             win32clipboard.CloseClipboard()
             
             # Simulate Ctrl+V
