@@ -1067,11 +1067,9 @@ class PynputBackend(InputBackend):
         """Handle keyboard press events."""
         translated_event = self._translate_key_event((key, True))
         if translated_event:
-            # Only log if this key wasn't already pressed
             if not hasattr(self, '_pressed_keys'):
                 self._pressed_keys = set()
             if translated_event[0] not in self._pressed_keys:
-                # print(f"Press event: {translated_event}")
                 self._pressed_keys.add(translated_event[0])
             self.on_input_event(translated_event)
 
@@ -1082,7 +1080,6 @@ class PynputBackend(InputBackend):
             if not hasattr(self, '_pressed_keys'):
                 self._pressed_keys = set()
             if translated_event[0] in self._pressed_keys:
-                # print(f"Release event: {translated_event}")
                 self._pressed_keys.discard(translated_event[0])
             self.on_input_event(translated_event)
 

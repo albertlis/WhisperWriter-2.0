@@ -60,13 +60,8 @@ class InputSimulator:
         Args:
             text (str): The text to type.
         """
-        # Get the character threshold from config, default to 1000 if not set
-        char_threshold = ConfigManager.get_config_value('post_processing', 'clipboard_threshold') or 1000
-        
-        # Use clipboard for long text
-        if len(text) > char_threshold:
-            self._paste_with_clipboard_preservation(text)
-            return
+        self._paste_with_clipboard_preservation(text)
+        return
 
         # Use regular keystroke simulation for shorter text
         interval = ConfigManager.get_config_value('post_processing', 'writing_key_press_delay')
