@@ -14,6 +14,8 @@ from result_thread import ResultThread, SharedMicStream
 from ui.main_window import MainWindow
 from ui.settings_window import SettingsWindow
 from ui.status_window import StatusWindow
+from ui.review_window import ReviewDialog
+import dataset_recorder
 from transcription import create_local_model
 from input_simulation import InputSimulator
 from utils import ConfigManager
@@ -37,9 +39,12 @@ class WhisperWriterApp(QObject):
         self.tray_icon: QSystemTrayIcon | None = None
         self.use_llm: bool = False
         self.is_instruction_mode: bool = False
+        self._reviewing: bool = False
 
         self.app = QApplication(sys.argv)
         self.app.setWindowIcon(QIcon(os.path.join('assets', 'ww-logo.png')))
+        # Tray-only app: closing a transient dialog (e.g. ReviewDialog) must not quit it.
+        self.app.setQuitOnLastWindowClosed(False)
 
         ConfigManager.initialize()
 
@@ -246,6 +251,37 @@ class WhisperWriterApp(QObject):
             # Temporarily disable key listener
             if self.key_listener:
                 self.key_listener.stop()
+
+            # Review + dataset capture operate on the raw transcription, before any LLM
+            # pass — LLM output is not valid ground truth for the recorded audio.
+            raw_result = result
+            if not result.strip():
+                ConfigManager.console_print('Empty transcription, nothing to review or save.')
+                return
+
+            if ConfigManager.get_config_value('training_data', 'review_before_paste'):
+                # ReviewDialog.exec() spins a nested event loop, so a resultSignal from a
+                # second recording would stack another dialog on top of this one. Drop it.
+                if self._reviewing:
+                    ConfigManager.console_print('Review already open, dropping transcription.')
+                    return
+                self._reviewing = True
+                try:
+                    reviewed = ReviewDialog.get_text(raw_result)
+                finally:
+                    self._reviewing = False
+                if reviewed is None:
+                    ConfigManager.console_print('Review cancelled, nothing typed.')
+                    return
+                result = reviewed
+
+            if ConfigManager.get_config_value('training_data', 'save_recordings') and self.result_thread:
+                dataset_recorder.save_sample(
+                    self.result_thread.last_audio,
+                    self.result_thread.sample_rate,
+                    result,
+                    raw_result,
+                )
 
             recording_mode = ConfigManager.get_config_value('recording_options', 'recording_mode')
             if self.use_llm and self.llm_processor and recording_mode in ('press_to_toggle', 'hold_to_record', 'continuous', 'voice_activity_detection'):

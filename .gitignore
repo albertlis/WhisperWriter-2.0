@@ -140,3 +140,5 @@ config.yaml
 *.cfg
 *.db
 /keyring/*
+# Training dataset captured from normal usage
+training_data/

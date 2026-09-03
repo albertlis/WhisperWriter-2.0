@@ -82,6 +82,8 @@ class ResultThread(QThread):
         self.media_controller: MediaController = MediaController()
         self.last_audio_time: float = time.time()
         self.is_transcribing: bool = False
+        # Kept for the training-data recorder — read by main.on_transcription_complete
+        self.last_audio: np.ndarray | None = None
 
     def stop_recording(self) -> None:
         """Stop the current recording session."""
@@ -116,6 +118,7 @@ class ResultThread(QThread):
             if not self.mic_stream:
                 self.statusSignal.emit('warming_up', self.use_llm)
             audio_data = self._record_audio()
+            self.last_audio = audio_data
 
             if not self.is_running:
                 return

@@ -304,3 +304,17 @@ misc:
     value: true
     type: bool
     description: "Keep microphone stream open permanently for instant recording start. Disable if Bluetooth headset switches to headset profile or battery drains faster."
+
+training_data:
+  save_recordings:
+    value: false
+    type: bool
+    description: "Save each recording (FLAC) plus its transcription to a training dataset for fine-tuning."
+  review_before_paste:
+    value: false
+    type: bool
+    description: "Show an editable window with the transcription before typing it out. Enter accepts, Shift+Enter adds a newline, Esc cancels."
+  output_dir:
+    value: "training_data"
+    type: str
+    description: "Dataset folder (relative to the project root). Contains audio/ and metadata.jsonl."
