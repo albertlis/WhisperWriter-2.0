@@ -318,7 +318,12 @@ class ReviewDialog(QDialog):
         self._offset = 0.0
         self._play_gen += 1
         if self.play_btn is not None:
-            self.play_btn.setText(_PLAY_LABEL)
+            try:
+                self.play_btn.setText(_PLAY_LABEL)
+            except RuntimeError:
+                # Dialog already torn down on the C++ side (accepted mid-playback) —
+                # stopping the sound is all that is left to do.
+                pass
 
     def _on_playback_end(self, gen: int) -> None:
         if gen == self._play_gen:
@@ -340,7 +345,10 @@ class ReviewDialog(QDialog):
 
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
         # One stop for every exit path (Enter, Esc, close) — exec() returns on all of them.
-        sd.stop()
+        # stop_play() rather than sd.stop(): it also bumps the generation counter, so the
+        # pending end-of-playback timer becomes a no-op instead of firing at a dialog
+        # whose buttons Qt has already destroyed.
+        dialog.stop_play()
         result = dialog.editor.toPlainText().strip() if accepted else None
         # hide() before returning: the caller types into the app underneath, and it only
         # regains focus once this topmost window is actually gone. deleteLater() alone
