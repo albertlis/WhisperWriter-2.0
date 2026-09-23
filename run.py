@@ -36,7 +36,6 @@ def set_cuda_paths():
                 print('No CUDA 12.x installation found in system')
                 return check_bundled_cuda()
         else:
-            print('NVIDIA CUDA Toolkit folder not found')
             return check_bundled_cuda()
             
         # Update environment variables
@@ -56,7 +55,13 @@ def check_bundled_cuda():
     """Check for bundled CUDA in virtual environment."""
     venv_base = Path(sys.executable).parent.parent
     nvidia_base_path = venv_base / 'Lib' / 'site-packages' / 'nvidia'
-    
+    ct2_path = venv_base / 'Lib' / 'site-packages' / 'ctranslate2'
+
+    if not nvidia_base_path.exists() and (ct2_path / 'cudnn64_9.dll').exists():
+        # ponytail: ctranslate2 wheel ships and loads its own cuBLAS/cuDNN, no PATH needed
+        print(f'Using CUDA bundled with ctranslate2 from: {ct2_path}')
+        return
+
     if not nvidia_base_path.exists():
         print('No CUDA installation found (neither system nor bundled), using CPU mode')
         return
