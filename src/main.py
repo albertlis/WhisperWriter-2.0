@@ -277,48 +277,13 @@ class WhisperWriterApp(QObject):
             if self.key_listener:
                 self.key_listener.stop()
 
-            # Review + dataset capture operate on the raw transcription, before any LLM
-            # pass — LLM output is not valid ground truth for the recorded audio.
             raw_result = result
+            llm_applied = False
             if not result.strip():
                 ConfigManager.console_print(
                     "Empty transcription, nothing to review or save."
                 )
                 return
-
-            if ConfigManager.get_config_value("training_data", "review_before_paste"):
-                # ReviewDialog.exec() spins a nested event loop, so a resultSignal from a
-                # second recording would stack another dialog on top of this one. Drop it.
-                if self._reviewing:
-                    ConfigManager.console_print(
-                        "Review already open, dropping transcription."
-                    )
-                    return
-                self._reviewing = True
-                try:
-                    reviewed = ReviewDialog.get_text(
-                        raw_result,
-                        self.result_thread.last_audio if self.result_thread else None,
-                        (self.result_thread.sample_rate if self.result_thread else None)
-                        or 16000,
-                    )
-                finally:
-                    self._reviewing = False
-                if reviewed is None:
-                    ConfigManager.console_print("Review cancelled, nothing typed.")
-                    return
-                result = reviewed
-
-            if (
-                ConfigManager.get_config_value("training_data", "save_recordings")
-                and self.result_thread
-            ):
-                dataset_recorder.save_sample(
-                    self.result_thread.last_audio,
-                    self.result_thread.sample_rate,
-                    result,
-                    raw_result,
-                )
 
             recording_mode = ConfigManager.get_config_value(
                 "recording_options", "recording_mode"
@@ -404,6 +369,7 @@ class WhisperWriterApp(QObject):
                     )
                     if processed_result:
                         result = processed_result.strip()
+                        llm_applied = True
                     else:
                         ConfigManager.console_print(
                             "LLM processing failed, using original transcription"
@@ -414,6 +380,43 @@ class WhisperWriterApp(QObject):
                         f"Error processing text through LLM: {str(e)}"
                     )
                     return result
+
+            # Review shows the final text (after LLM, if any).
+            if ConfigManager.get_config_value("training_data", "review_before_paste"):
+                # ReviewDialog.exec() spins a nested event loop, so a resultSignal from a
+                # second recording would stack another dialog on top of this one. Drop it.
+                if self._reviewing:
+                    ConfigManager.console_print(
+                        "Review already open, dropping transcription."
+                    )
+                    return
+                self._reviewing = True
+                try:
+                    reviewed = ReviewDialog.get_text(
+                        result,
+                        self.result_thread.last_audio if self.result_thread else None,
+                        (self.result_thread.sample_rate if self.result_thread else None)
+                        or 16000,
+                    )
+                finally:
+                    self._reviewing = False
+                if reviewed is None:
+                    ConfigManager.console_print("Review cancelled, nothing typed.")
+                    return
+                result = reviewed
+
+            # LLM output is not valid ground truth for the recorded audio — skip it.
+            if (
+                ConfigManager.get_config_value("training_data", "save_recordings")
+                and self.result_thread
+                and not llm_applied
+            ):
+                dataset_recorder.save_sample(
+                    self.result_thread.last_audio,
+                    self.result_thread.sample_rate,
+                    result,
+                    raw_result,
+                )
 
             # Type the result
             self.input_simulator.typewrite(result)
