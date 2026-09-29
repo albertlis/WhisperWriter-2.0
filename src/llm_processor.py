@@ -136,7 +136,7 @@ class LLMProcessor:
         try:
             ConfigManager.console_print(f"Sending request to Claude API with model {model}")
             response = requests.post(
-                self.config['endpoint'],
+                'https://api.anthropic.com/v1/messages',
                 headers=headers,
                 json=data
             )
@@ -451,10 +451,8 @@ class LLMProcessor:
                 
             elif api_type == 'chatgpt':
                 import openai
-                openai.api_key = api_key
-                
                 ConfigManager.console_print("Fetching OpenAI models...")
-                model_list_response = openai.Model.list()
+                model_list_response = openai.OpenAI(api_key=api_key).models.list()
                 models = [model.id for model in model_list_response.data]
                 ConfigManager.console_print(f"Found OpenAI models: {models}")
                 return models
@@ -472,7 +470,7 @@ class LLMProcessor:
                     ConfigManager.console_print("Ollama not available")
                     return []
                 
-                response = requests.get('http://localhost:11434/api/models')
+                response = requests.get('http://localhost:11434/api/tags')
                 if response.status_code == 200:
                     models_data = response.json()
                     models = [model['name'] for model in models_data.get('models', [])]

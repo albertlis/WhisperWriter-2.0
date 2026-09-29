@@ -132,8 +132,9 @@ class TextProcessor:
                 for i, word in enumerate(words):
                     stripped_word = word.strip('.,!?')
                     if stripped_word.lower() == find_term.lower():
-                        punctuation = word[len(stripped_word):]
-                        words[i] = replace_term + punctuation
+                        lead = word[:len(word) - len(word.lstrip('.,!?'))]
+                        trail = word[len(word.rstrip('.,!?')):]
+                        words[i] = lead + replace_term + trail
                 result = ' '.join(words)
                 
         return result
