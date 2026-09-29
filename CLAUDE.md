@@ -103,8 +103,9 @@ Fix one, don't assume it covers the other.
 
 ## Fine-tuning (`training/`)
 
-Osobny podprojekt z **własnym venv** — nie mieszać z głównym. Główny ma `torch+cpu`
-(aplikacja nie używa torcha, transkrybuje przez `ctranslate2`); `training/` ma `torch` cu128,
+Osobny podprojekt z **własnym venv** — nie mieszać z głównym. Główny venv **nie ma torcha**
+(aplikacja transkrybuje przez `ctranslate2`, a zainstalowany torch jest importowany przez
+`ctranslate2` przy starcie — zmierzone ~10 s); `training/` ma `torch` cu128,
 bo RTX 5080 to Blackwell sm_120.
 
 ```
@@ -169,7 +170,4 @@ powtarzać ścieżek, które już okazały się ślepe.
 
 ## Dependencies
 
-`uv` + `uv.lock`. GPU transcription requires CUDA 12.x + cuDNN 9 separately. CUDA-compatible torch (after `pip install .`):
-```
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-```
+`uv` + `uv.lock`. `start.bat` runs `.venv\Scripts\python.exe` directly (not `uv run`), so after changing deps run `uv sync --extra local` by hand. The `ctranslate2` wheel bundles cuBLAS/cuDNN (`run.py:check_bundled_cuda`). **Do not install torch in the main venv** — `ctranslate2` imports it when present, adding ~10 s to startup.

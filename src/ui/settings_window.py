@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 from dotenv import load_dotenv
@@ -48,21 +49,9 @@ class SettingsWindow(BaseWindow):
         self.refresh_thread = None  # Add thread reference
         self.init_settings_ui()
         
-        # Check if we're in API mode (no GPU tools available)
-        try:
-            import faster_whisper
-            has_faster_whisper = True
-        except ImportError:
-            has_faster_whisper = False
-        
-        try:
-            import vosk
-            has_vosk = True
-        except ImportError:
-            has_vosk = False
-        
-        # If neither is available, set API mode
-        if not has_faster_whisper and not has_vosk:
+        # If no local engine is installed, force API mode. find_spec checks presence
+        # without importing (importing faster_whisper takes seconds).
+        if not any(importlib.util.find_spec(m) for m in ('faster_whisper', 'vosk')):
             self.set_api_mode(True)
 
     def init_settings_ui(self):
@@ -835,27 +824,31 @@ class SettingsWindow(BaseWindow):
 
     def get_available_sound_devices(self):
         """Get list of available sound devices that support recording."""
+        # Opening a probe InputStream per device cost ~1.5 s each on close (~6 s per window
+        # open); check_input_settings validates the format without streaming. Only the
+        # default host API is listed — MME/DirectSound/WASAPI/WDM-KS each duplicate every
+        # mic — plus the configured device so a saved choice never vanishes. Indices stay
+        # global PortAudio indices, so the saved `sound_device` keeps its meaning.
         try:
-            devices = sd.query_devices()
+            configured = ConfigManager.get_config_value('recording_options', 'sound_device')
+            default_input = sd.default.device[0]
             input_devices = []
-            for i, device in enumerate(devices):
-                try:
-                    # Test if we can open an input stream with this device
-                    with sd.InputStream(device=i, channels=1, samplerate=16000, blocksize=1024):
-                        pass  # If we get here, the device works for recording
-                    
-                    if device['max_input_channels'] > 0:  # Only include input devices
-                        name = f"{i}: {device['name']}"
-                        input_devices.append({
-                            'index': i,
-                            'name': name,
-                            'channels': device['max_input_channels'],
-                            'default': device is sd.default.device[0]
-                        })
-                except sd.PortAudioError:
-                    # ConfigManager.console_print(f"Device {i}: {device['name']} not suitable for recording: {str(e)}")
+            for i, device in enumerate(sd.query_devices()):
+                if device['max_input_channels'] <= 0:
                     continue
-                
+                # str(): schema types sound_device as str, saves write an int
+                if device['hostapi'] != sd.default.hostapi and str(i) != str(configured):
+                    continue
+                try:
+                    sd.check_input_settings(device=i, channels=1, samplerate=16000)
+                except (sd.PortAudioError, ValueError):
+                    continue
+                input_devices.append({
+                    'index': i,
+                    'name': f"{i}: {device['name']}",
+                    'channels': device['max_input_channels'],
+                    'default': i == default_input,
+                })
             return input_devices
         except Exception as e:
             ConfigManager.console_print(f"Error getting sound devices: {str(e)}")

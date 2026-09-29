@@ -12,7 +12,6 @@ import win32con
 
 from key_listener import KeyListener
 from result_thread import ResultThread
-from ui.settings_window import SettingsWindow
 from ui.status_window import StatusWindow
 from ui.review_window import ReviewDialog
 import dataset_recorder
@@ -47,9 +46,8 @@ class WhisperWriterApp(QObject):
 
         ConfigManager.initialize()
 
-        self.settings_window = SettingsWindow()
-        self.settings_window.settings_closed.connect(self.on_settings_closed)
-        self.settings_window.settings_saved.connect(self.restart_app)
+        # Built on first open: construction probes every mic (~7 s), too slow for startup.
+        self.settings_window = None
 
         if ConfigManager.config_file_exists():
             self.initialize_components()
@@ -57,7 +55,17 @@ class WhisperWriterApp(QObject):
             self.key_listener.start()
         else:
             print("No valid configuration file found. Opening settings window...")
-            self.settings_window.show()
+            self.show_settings()
+
+    def show_settings(self):
+        """Open the settings window, building it on first use."""
+        if self.settings_window is None:
+            from ui.settings_window import SettingsWindow
+
+            self.settings_window = SettingsWindow()
+            self.settings_window.settings_closed.connect(self.on_settings_closed)
+            self.settings_window.settings_saved.connect(self.restart_app)
+        self.settings_window.show()
 
     def initialize_components(self):
         """
@@ -111,7 +119,7 @@ class WhisperWriterApp(QObject):
         self.tray_menu = QMenu()
 
         settings_action = QAction("Settings", self.app)
-        settings_action.triggered.connect(self.settings_window.show)
+        settings_action.triggered.connect(self.show_settings)
         self.tray_menu.addAction(settings_action)
 
         exit_action = QAction("Exit", self.app)

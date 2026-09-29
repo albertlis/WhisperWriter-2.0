@@ -7,8 +7,6 @@ import wave
 import json
 import requests
 from tqdm import tqdm
-from openai import OpenAI
-from groq import Groq
 
 from utils import ConfigManager
 from keyring_manager import KeyringManager
@@ -21,7 +19,6 @@ VOSK_MODEL_URLS = {
 
 # Check if GPU packages are available
 HAS_FASTER_WHISPER = importlib.util.find_spec("faster_whisper") is not None
-HAS_TORCH = importlib.util.find_spec("torch") is not None
 
 # Add check for Vosk availability
 HAS_VOSK = importlib.util.find_spec("vosk") is not None
@@ -89,46 +86,15 @@ def download_vosk_model(model_name: str) -> bool:
         return False
 
 def get_optimal_device():
+    """Return 'cuda' if CTranslate2 sees a GPU, else 'cpu'.
+
+    faster-whisper runs on CTranslate2, which only supports cuda/cpu — asking torch
+    cost ~10 s of import at startup for an answer CTranslate2 gives directly.
     """
-    Determine the best available device for Whisper inference.
-    Returns device string: 'mps', 'cuda', 'rocm', or 'cpu'
-    """
-    if not HAS_TORCH:
-        ConfigManager.console_print("Torch not available, defaulting to API mode")
-        return None
-        
-    import torch
-    ConfigManager.console_print(f"PyTorch version: {torch.__version__}")
-    ConfigManager.console_print(f"PyTorch CUDA version: {torch.version.cuda if hasattr(torch.version, 'cuda') else 'Not available'}")
-    
-    # Check CUDA availability with detailed logging
-    if torch.cuda.is_available():
-        cuda_device_count = torch.cuda.device_count()
-        cuda_device_name = torch.cuda.get_device_name(0) if cuda_device_count > 0 else "Unknown"
-        ConfigManager.console_print(f"CUDA is available. Found {cuda_device_count} device(s)")
-        ConfigManager.console_print(f"CUDA device name: {cuda_device_name}")
-        ConfigManager.console_print(f"CUDA capability: {torch.cuda.get_device_capability()}")
-        ConfigManager.console_print(f"CUDA arch list: {torch.cuda.get_arch_list() if hasattr(torch.cuda, 'get_arch_list') else 'Not available'}")
-    else:
-        ConfigManager.console_print("CUDA is not available. Checking why...")
-        if not hasattr(torch, 'cuda'):
-            ConfigManager.console_print("PyTorch was not built with CUDA support")
-        else:
-            ConfigManager.console_print("PyTorch has CUDA support but no CUDA devices were found")
-    
-    # Device selection logic
-    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        ConfigManager.console_print("Using Apple Silicon GPU (MPS)")
-        return "mps"
-    elif torch.cuda.is_available():
-        ConfigManager.console_print("Using NVIDIA GPU (CUDA)")
-        return "cuda"
-    elif hasattr(torch, 'hip') and torch.hip.is_available():
-        ConfigManager.console_print("Using AMD GPU (ROCm)")
-        return "rocm"
-    else:
-        ConfigManager.console_print("Using CPU")
-        return "cpu"
+    import ctranslate2
+    cuda_devices = ctranslate2.get_cuda_device_count()
+    ConfigManager.console_print(f"CTranslate2 CUDA devices: {cuda_devices}")
+    return "cuda" if cuda_devices > 0 else "cpu"
 
 def create_local_model():
     """Create a local model using Whisper."""
@@ -168,7 +134,7 @@ def create_local_model():
             
         # Import Whisper components only when needed
         from faster_whisper import WhisperModel
-        
+
         ConfigManager.console_print('Creating local model...')
         compute_type = local_model_options['compute_type']
         model_path = local_model_options.get('model_path')
@@ -399,6 +365,7 @@ def transcribe_with_groq(audio_data, api_options):
         sf.write(byte_io, audio_data, 16000, format='wav')
         byte_io.seek(0)
         
+        from groq import Groq  # lazy: SDK import costs ~0.5 s at startup
         client = Groq(api_key=api_key)
         
         model = api_options['model']

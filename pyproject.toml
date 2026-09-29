@@ -48,11 +48,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Local transcription / LLM — GPU stack installed separately via:
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+# Local transcription. No torch: faster-whisper runs on CTranslate2 (bundles its own
+# CUDA libs), and an installed torch gets imported by ctranslate2 anyway, costing ~10 s
+# at startup. training/ has its own venv with torch.
 local = [
-    "torch>=2.12.0",
-    "torchaudio>=2.11.0",
     "faster-whisper>=1.1.1",
     "ctranslate2>=4.6.0",
     "vosk>=0.3.45",

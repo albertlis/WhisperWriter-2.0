@@ -1,10 +1,7 @@
-import os
-import json
-import importlib
+import importlib.util
 import requests
 from utils import ConfigManager
 from keyring_manager import KeyringManager
-import ollama
 
 # Check if Ollama is available
 HAS_OLLAMA = importlib.util.find_spec("ollama") is not None
@@ -209,7 +206,6 @@ class LLMProcessor:
         return text
         
     def _process_gemini(self, text: str, system_message: str, model: str) -> str:
-        import google.generativeai as genai
         api_key = KeyringManager.get_api_key("gemini")
         ConfigManager.console_print(f"Using Gemini API key: {'[SET]' if api_key else '[NOT SET]'}")
         
@@ -274,7 +270,9 @@ class LLMProcessor:
         if not HAS_OLLAMA:
             ConfigManager.console_print("Ollama not available. Please install the Ollama package or choose a different API.")
             return text
-            
+
+        import ollama  # lazy: ~1 s of import, only needed when Ollama is the provider
+
         try:
             # Check if Ollama service is running and get available models
             models_response = ollama.list()
@@ -349,7 +347,7 @@ class LLMProcessor:
             if len(raw) != len(processed_text):
                 ConfigManager.console_print(f"Stripped think block ({len(raw) - len(processed_text)} chars)")
 
-            ConfigManager.console_print(f"Ollama response received:")
+            ConfigManager.console_print("Ollama response received:")
             ConfigManager.console_print(f"- Input length: {len(text)}")
             ConfigManager.console_print(f"- Output length: {len(processed_text)}")
             return processed_text
@@ -423,6 +421,7 @@ class LLMProcessor:
         
         try:
             if api_type == 'groq':
+                from groq import Groq
                 client = Groq(api_key=api_key)
                 
                 ConfigManager.console_print("Making request to Groq models endpoint...")
@@ -461,6 +460,7 @@ class LLMProcessor:
                 return models
                 
             elif api_type == 'gemini':
+                import google.generativeai as genai
                 genai.configure(api_key=api_key)
                 models = [m.name for m in genai.list_models() 
                          if 'generateContent' in m.supported_generation_methods]
