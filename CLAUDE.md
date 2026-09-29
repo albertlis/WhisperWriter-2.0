@@ -49,6 +49,8 @@ hotkey chord fires
 
 `SettingsWindow`, `StatusWindow`, `ModelRefreshWorker` (QThread for async model list fetching).
 
+Visual rules and colour tokens: `DESIGN.md` — read before touching any UI.
+
 **`MainWindow` is vestigial — never instantiated at runtime.** The app goes directly from config-load to `key_listener.start()` (with tray icon); the old Start-button window was bypassed intentionally.
 
 Auto-API-mode fallback: `SettingsWindow.__init__` probes for `faster_whisper`/`vosk` at import; if neither available, forces API mode regardless of config.
@@ -98,6 +100,72 @@ Recording modes: `press_to_toggle` (default), `hold_to_record`, `voice_activity_
 Fix one, don't assume it covers the other.
 
 **3. `LLMProcessor.process_text()` instruction-model selection is broken when a file path is set.** Line 75 compares the fully-assembled `system_message` (which `main.py` may have appended file contents to) against the raw config value. Once `instruction_system_message_file_path` is non-empty, equality fails → routes to `cleanup_model` silently. Additionally, `process_text` references `self.is_instruction_mode` (line 66) which is never set in `__init__` → latent `AttributeError` masked only by `main.py`'s early-return guard on empty `system_message`.
+
+## Fine-tuning (`training/`)
+
+Osobny podprojekt z **własnym venv** — nie mieszać z głównym. Główny ma `torch+cpu`
+(aplikacja nie używa torcha, transkrybuje przez `ctranslate2`); `training/` ma `torch` cu128,
+bo RTX 5080 to Blackwell sm_120.
+
+```
+cd training && uv sync && uv run python train_lora.py
+```
+
+Pełny przebieg (baseline → trening → eksport → pomiar) w `training/README.md`.
+Tam też tabela zmierzonych wyników — **czytaj ją przed kolejnym treningiem**, żeby nie
+powtarzać ścieżek, które już okazały się ślepe.
+
+| plik | rola |
+|------|------|
+| `data.py` | split train/validation/test, deterministyczny, bez odcięcia czasowego |
+| `run_eval.ps1` | eksport + baseline + model + bootstrap + terminy jednym przebiegiem |
+| `term_hits.py` | trafienia nazw własnych — jedyna metryka odpowiadająca na „czy zna terminy" |
+| `eval_wer.py` | WER przez faster-whisper; `--prompt auto`, `--dump` |
+| `train_lora.py` | `Seq2SeqTrainer` + PEFT LoRA na `openai/whisper-large-v3-turbo` |
+| `export_ct2.py` | merge adaptera → CTranslate2; bez `--adapter` eksportuje bazę (kontrola) |
+| `bootstrap.py` | przedział ufności dla różnicy WER między dwoma modelami |
+
+### Pułapki (wszystkie zweryfikowane pomiarem)
+
+1. **`training_data/` rośnie w trakcie eksperymentu.** Aplikacja dopisuje nagranie przy
+   każdym użyciu, więc dyktowanie podczas pracy nad treningiem zmienia `N`, a wraz z nim
+   podział `train_test_split`. Ta sama próbka potrafi przejść z testu do treningu między
+   dwoma pomiarami. Odcięcie czasowe zostało na życzenie usunięte, więc **baseline i model
+   muszą być mierzone jednym przebiegiem** (`run_eval.ps1`), bez dyktowania w międzyczasie.
+   Liczba próbek jest wypisywana przy każdym pomiarze — różni się między dwoma? porównanie
+   jest nieważne.
+2. **`initial_prompt` z listą terminów szkodzi.** Whisper traktuje prompt jako kontekst
+   do naśladowania stylistycznie, nie jako słownik. Lista przecinkowa uczy go generować
+   urwane frazy bez interpunkcji — zmierzone: WER raw 0.0753 → 0.1354.
+3. **Różnica WER przy ~70 próbkach testowych jest nie do odróżnienia od szumu.**
+   Zawsze `bootstrap.py` przed ogłoszeniem poprawy.
+4. **WER agreguje zbyt tępo na pytanie „czy zna nazwy własne".** Nazwa własna waży tyle
+   samo co spójnik i ginie w średniej. Na takie pytania liczyć trafienia terminów osobno.
+5. **`ct2-transformers-converter` wymaga `preprocessor_config.json`**, a transformers v5
+   zapisuje `processor_config.json`. Stąd jawne `feature_extractor.save_pretrained()`
+   w `export_ct2.py`.
+6. **cuBLAS/cuDNN dla faster-whisper w tym venv leżą w `torch/lib`** i trzeba je wskazać
+   przez `os.add_dll_directory` przed importem `faster_whisper` — odpowiednik tego, co
+   `run.py` robi dla aplikacji.
+7. **`datasets` przypięte `<4.0`** — 4.x dekoduje audio przez `torchcodec`, który na
+   Windows wymaga osobnego FFmpeg.
+8. **Learning rate decyduje o wszystkim.** `lr 1e-3` uczy nazw własnych, ale rozwala
+   ogólną kompetencję (WER soft ×3,2). `lr 2e-4` daje ten sam zysk na terminach bez
+   degradacji. Cztery inne hipotezy (batch, collator, gradient checkpointing, jakość
+   danych) zostały sprawdzone i **obalone** — lista w `training/README.md`.
+9. **Wysycenie VRAM nie daje OOM, tylko ciche spowolnienie ×90.** Sterownik Windows
+   przechodzi na RAM hosta. Objaw: `nvidia-smi` pokazuje ~300 MB wolnego przy 100%
+   utylizacji, a krok rośnie z 2 s do 180 s. Stąd `--grad-checkpointing` domyślnie w użyciu.
+10. **Metryka `eval_wer` z Trainera (~0.18) i WER z `eval_wer.py` (~0.06) to inne potoki.**
+   Pierwsza służy tylko do wyboru checkpointu. Porównywanie ich prowadzi do fałszywego
+   wniosku o katastrofie.
+11. **Trening uruchamiać przez `Start-Process`** (proces odpięty). Zadania w tle Claude Code
+   są ubijane przy niskiej pamięci systemowej i giną razem z sesją.
+
+### Podpięcie wytrenowanego modelu
+
+`src/config.yaml` → `model_options.local.model_path` na katalog z eksportu.
+Żadnej zmiany w kodzie aplikacji.
 
 ## Dependencies
 
