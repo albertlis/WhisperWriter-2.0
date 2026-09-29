@@ -385,9 +385,10 @@ class SettingsWindow(BaseWindow):
         return widget
 
     def get_config_value(self, category, sub_category, key, meta):
-        if sub_category:
-            return ConfigManager.get_config_value(category, sub_category, key) or meta['value']
-        return ConfigManager.get_config_value(category, key) or meta['value']
+        # `or` would turn a saved False/0/"" back into the schema default
+        value = (ConfigManager.get_config_value(category, sub_category, key) if sub_category
+                 else ConfigManager.get_config_value(category, key))
+        return meta['value'] if value is None else value
 
     def browse_model_path(self, widget):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Whisper Model File", "", "Model Files (*.bin);;All Files (*)")

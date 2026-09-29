@@ -11,7 +11,7 @@ import win32clipboard
 import win32con
 
 from key_listener import KeyListener
-from result_thread import ResultThread, SharedMicStream
+from result_thread import ResultThread
 from ui.settings_window import SettingsWindow
 from ui.status_window import StatusWindow
 from ui.review_window import ReviewDialog
@@ -34,7 +34,6 @@ class WhisperWriterApp(QObject):
         self.local_model = None
         self.result_thread: ResultThread | None = None
         self.llm_processor: LLMProcessor | None = None
-        self._mic_stream: SharedMicStream | None = None
         self.status_window: StatusWindow | None = None
         self.tray_icon: QSystemTrayIcon | None = None
         self.use_llm: bool = False
@@ -96,27 +95,6 @@ class WhisperWriterApp(QObject):
             else None
         )
 
-        # Close previous stream if initialize_components() is called a second time (on_settings_closed path)
-        _prev = getattr(self, "_mic_stream", None)
-        if _prev is not None:
-            try:
-                _prev.close()
-            except Exception:
-                pass
-        self._mic_stream = None
-        if ConfigManager.get_config_value("misc", "fast_start_mic"):
-            try:
-                _ro = ConfigManager.get_config_section("recording_options") or {}
-                _sr = _ro.get("sample_rate") or 16000
-                self._mic_stream = SharedMicStream(
-                    _sr, int(_sr * 30 / 1000), _ro.get("sound_device")
-                )
-            except Exception as e:
-                ConfigManager.console_print(
-                    f"Shared mic stream failed, cold-open fallback active: {e}"
-                )
-                self._mic_stream = None
-
         if not ConfigManager.get_config_value("misc", "hide_status_window"):
             self.status_window = StatusWindow()
 
@@ -148,11 +126,6 @@ class WhisperWriterApp(QObject):
             self.key_listener.stop()
         if getattr(self, "input_simulator", None):
             self.input_simulator.cleanup()
-        if getattr(self, "_mic_stream", None) is not None:
-            try:
-                self._mic_stream.close()
-            except Exception:
-                pass
 
     def exit_app(self):
         """
@@ -257,7 +230,7 @@ class WhisperWriterApp(QObject):
             return
 
         self.result_thread = ResultThread(
-            self.local_model, self.use_llm, getattr(self, "_mic_stream", None)
+            self.local_model, self.use_llm
         )
         if not ConfigManager.get_config_value("misc", "hide_status_window"):
             self.result_thread.statusSignal.connect(self.status_window.updateStatus)

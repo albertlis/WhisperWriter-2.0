@@ -300,10 +300,6 @@ misc:
     value: false
     type: bool
     description: "Automatically pause/resume media during recording"
-  fast_start_mic:
-    value: true
-    type: bool
-    description: "Keep microphone stream open permanently for instant recording start. Disable if Bluetooth headset switches to headset profile or battery drains faster."
 
 training_data:
   save_recordings:
