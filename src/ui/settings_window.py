@@ -18,6 +18,23 @@ from llm_processor import LLMProcessor
 
 load_dotenv()
 
+_INPUT_WIDTH = 320
+_ACRONYMS = {'llm': 'LLM', 'api': 'API', 'url': 'URL', 'vad': 'VAD', 'gpu': 'GPU', 'id': 'ID', 'openai': 'OpenAI'}
+# Short tab names so all tabs fit without scroll arrows
+_TAB_NAMES = {
+    'model_options': 'Model',
+    'recording_options': 'Recording',
+    'post_processing': 'Post-processing',
+    'llm_post_processing': 'LLM',
+}
+
+
+def _humanize(key: str) -> str:
+    """snake_case → sentence case, keeping acronyms upper-case: 'llm_api_url' → 'LLM API URL'."""
+    words = [_ACRONYMS.get(w, w) for w in key.split('_')]
+    first = words[0] if words[0].isupper() else words[0].capitalize()
+    return ' '.join([first, *words[1:]])
+
 class SettingsWindow(BaseWindow):
     settings_closed = pyqtSignal()
     settings_saved = pyqtSignal()
@@ -99,7 +116,7 @@ class SettingsWindow(BaseWindow):
             main_tab_layout.addWidget(scroll_area)
             tab.setLayout(main_tab_layout)
             
-            self.tabs.addTab(tab, category.replace('_', ' ').capitalize())
+            self.tabs.addTab(tab, _TAB_NAMES.get(category, _humanize(category)))
 
     def create_settings_widgets(self, layout, category, settings):
         """Create widgets for each setting in a category."""
@@ -126,6 +143,7 @@ class SettingsWindow(BaseWindow):
         close_button.clicked.connect(self.handleCloseButton)
 
         save_button = QPushButton('Save')
+        save_button.setObjectName('primaryButton')
         save_button.setFont(QFont('Segoe UI', 11))
         save_button.clicked.connect(self.save_settings)
 
@@ -142,7 +160,7 @@ class SettingsWindow(BaseWindow):
         
         # Special handling for volume reduction to add % symbol
         if key == 'recording_volume_reduction':
-            label = QLabel("Recording Volume Reduction:")
+            label = QLabel("Recording volume reduction")
             widget = QLineEdit()
             widget.setText(str(meta.get('value', 0)))
             widget.setValidator(QIntValidator(0, 100))  # Only allow integers 0-100
@@ -158,13 +176,13 @@ class SettingsWindow(BaseWindow):
         # Special handling for model fields to clarify their purpose
         elif category == 'llm_post_processing':
             if key == 'model':
-                label = QLabel("Cleanup Model:")  # Changed from just "Model:"
+                label = QLabel("Cleanup model")
             elif key == 'instruction_model':
-                label = QLabel("Instruction Model:")
+                label = QLabel("Instruction model")
             else:
-                label = QLabel(f"{key.replace('_', ' ').capitalize()}:")
+                label = QLabel(_humanize(key))
         else:
-            label = QLabel(f"{key.replace('_', ' ').capitalize()}:")
+            label = QLabel(_humanize(key))
         
         # Create widget if not already created
         widget = self.create_widget_for_type(key, meta, category, sub_category)
@@ -173,26 +191,30 @@ class SettingsWindow(BaseWindow):
 
         # Set larger font for the widget if it's a text-based widget
         if isinstance(widget, (QLineEdit, QComboBox, QTextEdit, QSpinBox)):
-            widget.setFont(QFont('Segoe UI', 11))
+            widget.setFont(QFont('Segoe UI', 10))
+        # One input column: every short field ends on the same edge
+        if isinstance(widget, (QLineEdit, QComboBox, QSpinBox)):
+            widget.setFixedWidth(_INPUT_WIDTH)
 
-        label.setFont(QFont('Segoe UI', 11))
+        label.setFont(QFont('Segoe UI', 10, QFont.Weight.DemiBold))
         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         item_layout.addWidget(label)
         item_layout.addWidget(widget)
         layout.addLayout(item_layout)
 
+        # Set object names for the widget and label
+        widget_name = f"{category}_{sub_category}_{key}_input" if sub_category else f"{category}_{key}_input"
+        label_name = f"{category}_{sub_category}_{key}_label" if sub_category else f"{category}_{key}_label"
+
         description = meta.get('description', '')
         if description:
             desc_label = QLabel(description)
             desc_label.setWordWrap(True)
-            desc_label.setObjectName('settingDescription')
-            desc_label.setContentsMargins(0, 0, 0, 6)
+            # Named per setting so toggle_widget_visibility can hide it with its field
+            desc_label.setObjectName(label_name.removesuffix('_label') + '_desc')
+            desc_label.setProperty('role', 'description')
             layout.addWidget(desc_label)
-
-        # Set object names for the widget and label
-        widget_name = f"{category}_{sub_category}_{key}_input" if sub_category else f"{category}_{key}_input"
-        label_name = f"{category}_{sub_category}_{key}_label" if sub_category else f"{category}_{key}_label"
 
         label.setObjectName(label_name)
         
@@ -571,10 +593,10 @@ class SettingsWindow(BaseWindow):
             widget.setVisible(use_api if sub_category == 'api' else not use_api)
             
             # Also toggle visibility of the corresponding label and help button
-            label = self.findChild(QLabel, f"{category}_{sub_category}_{key}_label")
-
-            if label:
-                label.setVisible(use_api if sub_category == 'api' else not use_api)
+            for suffix in ('label', 'desc'):
+                label = self.findChild(QLabel, f"{category}_{sub_category}_{key}_{suffix}")
+                if label:
+                    label.setVisible(use_api if sub_category == 'api' else not use_api)
 
     def _iter_settings_gen(self):
         for category, settings in self.schema.items():

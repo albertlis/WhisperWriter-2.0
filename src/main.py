@@ -6,6 +6,7 @@ from pynput.keyboard import Controller, Key
 from PyQt6.QtCore import QObject, QProcess
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
+import ctypes
 import win32clipboard
 import win32con
 
@@ -163,6 +164,7 @@ class WhisperWriterApp(QObject):
     def restart_app(self):
         """Restart the application to apply the new settings."""
         self.cleanup()
+        _release_single_instance()
         QProcess.startDetached(sys.executable, sys.argv)
         QApplication.quit()
 
@@ -259,6 +261,7 @@ class WhisperWriterApp(QObject):
         )
         if not ConfigManager.get_config_value("misc", "hide_status_window"):
             self.result_thread.statusSignal.connect(self.status_window.updateStatus)
+            self.result_thread.levelSignal.connect(self.status_window.push_level)
             self.status_window.closeSignal.connect(self.stop_result_thread)
         self.result_thread.resultSignal.connect(self.on_transcription_complete)
         self.result_thread.start()
@@ -588,6 +591,34 @@ class WhisperWriterApp(QObject):
         sys.exit(self.app.exec())
 
 
+_INSTANCE_MUTEX = "Local\\WhisperWriterSingleInstance"
+_ERROR_ALREADY_EXISTS = 183
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_instance_lock: int | None = None
+
+
+def _acquire_single_instance() -> bool:
+    """Named mutex held for the process lifetime; a second instance finds it and exits.
+
+    Two instances each own a key listener and a mic, so one hotkey press toggles both and
+    the pill seems stuck recording.
+    """
+    global _instance_lock
+    _instance_lock = _kernel32.CreateMutexW(None, False, _INSTANCE_MUTEX)
+    return ctypes.get_last_error() != _ERROR_ALREADY_EXISTS
+
+
+def _release_single_instance() -> None:
+    """Called before restart_app spawns the successor, which would otherwise exit at once."""
+    global _instance_lock
+    if _instance_lock is not None:
+        _kernel32.CloseHandle(_instance_lock)
+        _instance_lock = None
+
+
 if __name__ == "__main__":
+    if not _acquire_single_instance():
+        print("WhisperWriter is already running — exiting.")
+        sys.exit(0)
     app = WhisperWriterApp()
     app.run()

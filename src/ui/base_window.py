@@ -81,7 +81,7 @@ class BaseWindow(QMainWindow):
             title_label = QLabel("WhisperWriter")
             title_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
             title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title_label.setStyleSheet("color: #cdd6f4;")
+            title_label.setStyleSheet("color: #E8E6E1;")
 
             close_button_widget = QWidget()
             close_button_layout = QHBoxLayout(close_button_widget)
@@ -90,8 +90,8 @@ class BaseWindow(QMainWindow):
             close_button = QPushButton("×")
             close_button.setFixedSize(25, 25)
             close_button.setStyleSheet("""
-                QPushButton { background-color: transparent; border: none; color: #cdd6f4; font-size: 16pt; }
-                QPushButton:hover { color: #ff6b6b; }
+                QPushButton { background-color: transparent; border: none; color: #8C8F96; font-size: 16pt; }
+                QPushButton:hover { color: #E8E6E1; }
             """)
             close_button.clicked.connect(self.handleCloseButton)
             close_button_layout.addWidget(
@@ -145,9 +145,9 @@ class BaseWindow(QMainWindow):
     @override
     def paintEvent(self, a0: QPaintEvent | None) -> None:
         path = QPainterPath()
-        path.addRoundedRect(QRectF(self.rect()), 20, 20)
+        path.addRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor(255, 255, 255, 220)))
-        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor("#18191C")))
+        painter.setPen(QColor("#33363C"))
         painter.drawPath(path)

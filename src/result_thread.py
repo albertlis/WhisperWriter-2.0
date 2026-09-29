@@ -68,6 +68,7 @@ class ResultThread(QThread):
 
     statusSignal: pyqtSignal = pyqtSignal(str, bool)
     resultSignal: pyqtSignal = pyqtSignal(str)
+    levelSignal: pyqtSignal = pyqtSignal(float)  # RMS of each 30 ms frame, 0..1 — drives the status meter
 
     def __init__(self, local_model: object | None = None, use_llm: bool = False, mic_stream: SharedMicStream | None = None) -> None:
         super().__init__()
@@ -237,6 +238,7 @@ class ResultThread(QThread):
                     frame = np.array(list(audio_buffer), dtype=np.int16)
                     audio_buffer.clear()
                     recording.extend(frame)
+                    self.levelSignal.emit(float(np.sqrt(np.mean(frame.astype(np.float32) ** 2))) / 32768.0)
 
                     if recording_mode in ('voice_activity_detection', 'continuous'):
                         if vad and vad.is_speech(frame.tobytes(), self.sample_rate):

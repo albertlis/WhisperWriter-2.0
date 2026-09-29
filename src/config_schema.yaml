@@ -314,6 +314,10 @@ training_data:
     value: false
     type: bool
     description: "Show an editable window with the transcription before typing it out. Enter accepts, Shift+Enter adds a newline, Esc cancels."
+  review_seek_seconds:
+    value: 5
+    type: int
+    description: "Jump size in seconds for the rewind/forward buttons in the review window."
   output_dir:
     value: "training_data"
     type: str
