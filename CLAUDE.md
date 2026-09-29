@@ -10,7 +10,9 @@ uv run python run.py
 
 Or double-click `start.bat`. CWD **must** be `D:\Tools\ww-llm` (not `src/`) — paths like `src/config.yaml` and `assets/` are relative to project root.
 
-`run.py` discovers CUDA 12.x (newest `v*/bin` under NVIDIA toolkit, venv-bundled fallback), calls `load_dotenv()`, then `subprocess.run([sys.executable, 'src/main.py'])`. CUDA env setup happens in the parent process only — **`restart_app()` in `main.py` uses `QProcess.startDetached` which re-runs `main.py` directly, bypassing `run.py`, so GPU may be unavailable after an in-app settings restart.**
+`run.py` discovers CUDA 12.x (newest `v*/bin` under NVIDIA toolkit, venv-bundled fallback), calls `load_dotenv()`, then `subprocess.run([sys.executable, 'src/main.py'])`. CUDA env setup happens in the parent process only — **`restart_app()` in `main.py` uses `QProcess.startDetached` which re-runs `main.py` directly, bypassing `run.py`.** The child inherits the parent's env (incl. `PATH` set by `run.py`), so CUDA should still resolve — not measured.
+
+User-facing docs live in `README.md` and `docs/` — keep them in sync when changing behaviour or config keys.
 
 ## Architecture
 
@@ -91,7 +93,7 @@ Recording modes: `press_to_toggle` (default), `hold_to_record`, `voice_activity_
 
 ## Gotchas
 
-**1. Double `key_listener.start()` — listener leak.** `on_transcription_complete` calls `key_listener.start()` at line 277, then the `finally` block calls it again at line 282 unconditionally. `PynputBackend.start()` creates fresh listener threads each call without stopping prior ones → one leaked listener thread per transcription. Known bug.
+**1. `key_listener.start()` is called from several places** (`main.py` init, `on_transcription_complete` `finally`, restart). Safe only because `PynputBackend.start()` calls `self.stop()` first (`key_listener.py` ~961). Don't remove that stop — it is what prevents leaked listener threads.
 
 **2. Two independent clipboard save/restore implementations.**
 - `InputSimulator._paste_with_clipboard_preservation()` — for long transcription output
@@ -99,74 +101,73 @@ Recording modes: `press_to_toggle` (default), `hold_to_record`, `voice_activity_
 
 Fix one, don't assume it covers the other.
 
-**3. `LLMProcessor.process_text()` instruction-model selection is broken when a file path is set.** Line 75 compares the fully-assembled `system_message` (which `main.py` may have appended file contents to) against the raw config value. Once `instruction_system_message_file_path` is non-empty, equality fails → routes to `cleanup_model` silently. Additionally, `process_text` references `self.is_instruction_mode` (line 66) which is never set in `__init__` → latent `AttributeError` masked only by `main.py`'s early-return guard on empty `system_message`.
+**3. `LLMProcessor.process_text()` instruction-model selection is broken when a file path is set.** Line 72 compares the fully-assembled `system_message` (which `main.py` may have appended file contents to) against the raw config value. Once `instruction_system_message_file_path` is non-empty, equality fails → routes to `cleanup_model` silently. Additionally, `process_text` references `self.is_instruction_mode` (line 63) which is never set in `__init__` → latent `AttributeError` masked only by `main.py`'s early-return guard on empty `system_message`.
 
 ## Fine-tuning (`training/`)
 
-Osobny podprojekt z **własnym venv** — nie mieszać z głównym. Główny venv **nie ma torcha**
-(aplikacja transkrybuje przez `ctranslate2`, a zainstalowany torch jest importowany przez
-`ctranslate2` przy starcie — zmierzone ~10 s); `training/` ma `torch` cu128,
-bo RTX 5080 to Blackwell sm_120.
+Separate subproject with **its own venv** — do not mix with the main one. The main venv **has no torch**
+(the app transcribes via `ctranslate2`, and any installed torch gets imported by
+`ctranslate2` at startup — measured ~10 s); `training/` carries `torch` cu128
+because the RTX 5080 is Blackwell sm_120.
 
 ```
 cd training && uv sync && uv run python train_lora.py
 ```
 
-Pełny przebieg (baseline → trening → eksport → pomiar) w `training/README.md`.
-Tam też tabela zmierzonych wyników — **czytaj ją przed kolejnym treningiem**, żeby nie
-powtarzać ścieżek, które już okazały się ślepe.
+Full run (baseline → training → export → measurement) documented in `training/README.md`.
+That file also has the results table — **read it before starting another training run** to avoid
+repeating paths already proven dead ends.
 
-| plik | rola |
+| file | role |
 |------|------|
-| `data.py` | split train/validation/test, deterministyczny, bez odcięcia czasowego |
-| `run_eval.ps1` | eksport + baseline + model + bootstrap + terminy jednym przebiegiem |
-| `term_hits.py` | trafienia nazw własnych — jedyna metryka odpowiadająca na „czy zna terminy" |
-| `eval_wer.py` | WER przez faster-whisper; `--prompt auto`, `--dump` |
-| `train_lora.py` | `Seq2SeqTrainer` + PEFT LoRA na `openai/whisper-large-v3-turbo` |
-| `export_ct2.py` | merge adaptera → CTranslate2; bez `--adapter` eksportuje bazę (kontrola) |
-| `bootstrap.py` | przedział ufności dla różnicy WER między dwoma modelami |
+| `data.py` | train/validation/test split, deterministic, no time-based cutoff |
+| `run_eval.ps1` | export + baseline + model + bootstrap + term hits in one pass |
+| `term_hits.py` | proper-noun hit count — the only metric that answers "does it know the terms" |
+| `eval_wer.py` | WER via faster-whisper; `--prompt auto`, `--dump` |
+| `train_lora.py` | `Seq2SeqTrainer` + PEFT LoRA on `openai/whisper-large-v3-turbo` |
+| `export_ct2.py` | merge adapter → CTranslate2; without `--adapter` exports the base model (control) |
+| `bootstrap.py` | confidence interval for WER difference between two models |
 
-### Pułapki (wszystkie zweryfikowane pomiarem)
+### Pitfalls (all verified by measurement)
 
-1. **`training_data/` rośnie w trakcie eksperymentu.** Aplikacja dopisuje nagranie przy
-   każdym użyciu, więc dyktowanie podczas pracy nad treningiem zmienia `N`, a wraz z nim
-   podział `train_test_split`. Ta sama próbka potrafi przejść z testu do treningu między
-   dwoma pomiarami. Odcięcie czasowe zostało na życzenie usunięte, więc **baseline i model
-   muszą być mierzone jednym przebiegiem** (`run_eval.ps1`), bez dyktowania w międzyczasie.
-   Liczba próbek jest wypisywana przy każdym pomiarze — różni się między dwoma? porównanie
-   jest nieważne.
-2. **`initial_prompt` z listą terminów szkodzi.** Whisper traktuje prompt jako kontekst
-   do naśladowania stylistycznie, nie jako słownik. Lista przecinkowa uczy go generować
-   urwane frazy bez interpunkcji — zmierzone: WER raw 0.0753 → 0.1354.
-3. **Różnica WER przy ~70 próbkach testowych jest nie do odróżnienia od szumu.**
-   Zawsze `bootstrap.py` przed ogłoszeniem poprawy.
-4. **WER agreguje zbyt tępo na pytanie „czy zna nazwy własne".** Nazwa własna waży tyle
-   samo co spójnik i ginie w średniej. Na takie pytania liczyć trafienia terminów osobno.
-5. **`ct2-transformers-converter` wymaga `preprocessor_config.json`**, a transformers v5
-   zapisuje `processor_config.json`. Stąd jawne `feature_extractor.save_pretrained()`
-   w `export_ct2.py`.
-6. **cuBLAS/cuDNN dla faster-whisper w tym venv leżą w `torch/lib`** i trzeba je wskazać
-   przez `os.add_dll_directory` przed importem `faster_whisper` — odpowiednik tego, co
-   `run.py` robi dla aplikacji.
-7. **`datasets` przypięte `<4.0`** — 4.x dekoduje audio przez `torchcodec`, który na
-   Windows wymaga osobnego FFmpeg.
-8. **Learning rate decyduje o wszystkim.** `lr 1e-3` uczy nazw własnych, ale rozwala
-   ogólną kompetencję (WER soft ×3,2). `lr 2e-4` daje ten sam zysk na terminach bez
-   degradacji. Cztery inne hipotezy (batch, collator, gradient checkpointing, jakość
-   danych) zostały sprawdzone i **obalone** — lista w `training/README.md`.
-9. **Wysycenie VRAM nie daje OOM, tylko ciche spowolnienie ×90.** Sterownik Windows
-   przechodzi na RAM hosta. Objaw: `nvidia-smi` pokazuje ~300 MB wolnego przy 100%
-   utylizacji, a krok rośnie z 2 s do 180 s. Stąd `--grad-checkpointing` domyślnie w użyciu.
-10. **Metryka `eval_wer` z Trainera (~0.18) i WER z `eval_wer.py` (~0.06) to inne potoki.**
-   Pierwsza służy tylko do wyboru checkpointu. Porównywanie ich prowadzi do fałszywego
-   wniosku o katastrofie.
-11. **Trening uruchamiać przez `Start-Process`** (proces odpięty). Zadania w tle Claude Code
-   są ubijane przy niskiej pamięci systemowej i giną razem z sesją.
+1. **`training_data/` grows during the experiment.** The app appends a recording on every use,
+   so dictating while working on training changes `N` and with it the `train_test_split`. The
+   same sample can move from the test set to the train set between two measurements. The
+   time-based cutoff was removed on request, so **baseline and model must be measured in a
+   single pass** (`run_eval.ps1`), without dictating in between. The sample count is printed
+   at each measurement — if it differs between the two, the comparison is invalid.
+2. **`initial_prompt` with a term list is harmful.** Whisper treats the prompt as stylistic
+   context to imitate, not as a vocabulary hint. A comma-separated list teaches it to generate
+   clipped phrases without punctuation — measured: WER raw 0.0753 → 0.1354.
+3. **WER difference at ~70 test samples is indistinguishable from noise.**
+   Always run `bootstrap.py` before claiming an improvement.
+4. **WER aggregates too coarsely to answer "does it know proper nouns".** A proper noun weighs
+   the same as a conjunction and drowns in the average. For that question, count term hits separately.
+5. **`ct2-transformers-converter` requires `preprocessor_config.json`**, but transformers v5
+   writes `processor_config.json`. Hence the explicit `feature_extractor.save_pretrained()`
+   in `export_ct2.py`.
+6. **cuBLAS/cuDNN for faster-whisper in this venv live in `torch/lib`** and must be registered
+   via `os.add_dll_directory` before importing `faster_whisper` — the same thing `run.py` does
+   for the main app.
+7. **`datasets` pinned `<4.0`** — 4.x decodes audio through `torchcodec`, which on Windows
+   requires a separate FFmpeg.
+8. **Learning rate is decisive.** `lr 1e-3` teaches proper nouns but destroys general competence
+   (WER soft ×3.2). `lr 2e-4` yields the same term gain without degradation. Four other
+   hypotheses (batch size, collator, gradient checkpointing, data quality) were tested and
+   **disproved** — list in `training/README.md`.
+9. **VRAM saturation does not give OOM, only silent ×90 slowdown.** The Windows driver spills
+   to host RAM. Symptom: `nvidia-smi` shows ~300 MB free at 100% utilization while the step
+   grows from 2 s to 180 s. Hence `--grad-checkpointing` is on by default.
+10. **The Trainer's `eval_wer` metric (~0.18) and WER from `eval_wer.py` (~0.06) are different
+    pipelines.** The former serves only for checkpoint selection. Comparing them leads to a
+    false conclusion of catastrophic degradation.
+11. **Run training via `Start-Process`** (detached process). Claude Code background tasks are
+    killed under low system memory and die with the session.
 
-### Podpięcie wytrenowanego modelu
+### Using a trained model
 
-`src/config.yaml` → `model_options.local.model_path` na katalog z eksportu.
-Żadnej zmiany w kodzie aplikacji.
+`src/config.yaml` → `model_options.local.model_path` pointing to the export directory.
+No code changes needed.
 
 ## Dependencies
 

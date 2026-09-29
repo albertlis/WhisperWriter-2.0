@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] - fork by albert.lis, 2026-06-18 → 2026-09-29
+
+### Added
+- **Training data capture** — `training_data.save_recordings` saves every transcription as FLAC + `metadata.jsonl` (HuggingFace `audiofolder` compatible). Fields: `file_name`, `text`, `text_asr`, `duration`, `model`, `edited`, `ts`. LLM-processed output is excluded (not ground truth).
+- **Review dialog with audio playback** — `training_data.review_before_paste` shows an editable dialog before typing. Includes seek slider, position readout, and configurable seek step (`review_seek_seconds`). Corrections set `edited: true` in the dataset.
+- **LoRA fine-tuning sub-project** (`training/`) — separate venv, `Seq2SeqTrainer` + PEFT LoRA on `openai/whisper-large-v3-turbo`, export to CTranslate2 via `export_ct2.py`. See `training/README.md` for measured results.
+- **Single-instance lock** — named Win32 mutex prevents two instances binding the same hotkeys. Released cleanly before in-app restart.
+- **DESIGN.md** — colour tokens and UI rules for contributors.
+
+### Changed
+- **Startup time cut from ~29 s to ~6 s** — `torch`/`torchaudio` removed from main venv (ctranslate2 imports torch when present, adding ~10 s); SettingsWindow built on first open; microphone device list no longer opens a probe stream per device; LLM/API imports are lazy; `start.bat` runs the venv Python directly.
+- **Status pill redesigned** — opaque graphite pill with live mic-level meter and elapsed timer. Width computed from font metrics; no DWM Acrylic backdrop.
+- **Settings window redesigned** — sentence-case labels, short tab names, single input column, monochrome QSS; hidden API/local fields also hide their descriptions; `false`/`0`/`""` values no longer fall back to schema default on save.
+- **Review dialog improved** — editor grows with text; Stop button removed; playback controls simplified.
+- **Microphone stream opened per recording** — eliminates Bluetooth headset being pinned to HFP profile and silent capture failure after disconnect/RDP drop. Status shows `warming_up` until first non-zero frame or 1 s.
+- **CUDA discovery** — `run.py` detects CUDA bundled with ctranslate2 instead of requiring a system toolkit install; `get_optimal_device()` queries ctranslate2 directly.
+- **Hotkey capture** — replaced pynput hotkey capture with Qt `eventFilter` in SettingsWindow.
+
+### Fixed
+- Fixed double `key_listener.start()` idempotency guard (listener thread leak on every transcription).
+- Fixed settings window displaying `False`/`0`/`""` as schema default on re-open.
+- Fixed review dialog crash when accepted during audio playback.
+- Fixed LLM-processed text not shown in the review dialog (now shows post-LLM result).
+- Fixed default sound device flag comparison (dict vs int).
+- PyQt6 migration; lazy LLM imports; Ollama response content fix.
+
 ## [1.1.1] - 2025-02-21
 
 All changes in this release are from [Thomas Frank's](https://github.com/TomFrankly) fork of the project.
