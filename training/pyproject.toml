@@ -1,0 +1,30 @@
+[project]
+name = "ww-llm-training"
+version = "0.1.0"
+description = "Whisper LoRA fine-tuning na danych z training_data/"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "torch>=2.7.0",
+    "torchaudio>=2.7.0",
+    "transformers>=4.45.0",
+    # <4.0: datasets 4.x dekoduje audio przez torchcodec, który na Windows wymaga
+    # osobnego FFmpeg. 3.x używa soundfile, który i tak jest w zależnościach.
+    "datasets>=3.0.0,<4.0.0",
+    "accelerate>=1.0.0",
+    "peft>=0.13.0",
+    "evaluate>=0.4.3",
+    "jiwer>=3.0.0",
+    "soundfile>=0.12.1",
+    "librosa>=0.10.2",
+    "ctranslate2>=4.6.0",
+    "faster-whisper>=1.1.1",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

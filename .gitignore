@@ -142,3 +142,8 @@ config.yaml
 /keyring/*
 # Training dataset captured from normal usage
 training_data/
+
+# Fine-tuning artifacts (checkpoints, merged models), run logs, eval dumps (contain dictated text)
+training/out*/
+training/*.err
+training/dump_*.json
