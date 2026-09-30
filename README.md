@@ -64,7 +64,8 @@ Supported providers: Claude, ChatGPT, Gemini, Groq and Ollama.
 <td valign="top">
 
 ### ✍️ Review before paste
-An editable dialog shows the transcript before it is typed. You can play the audio, seek, and use a scrub slider.
+Check and fix the transcript before it is typed. Built for **collecting clean training data**: whatever you correct is saved as the label next to the audio.
+Listen back while you edit: **play / pause**, **seek ±N s** and a **scrub slider** take you to the exact word you misspoke.
 <kbd>Enter</kbd> accept · <kbd>Esc</kbd> cancel · <kbd>Ctrl</kbd>+<kbd>Space</kbd> play
 
 </td>
