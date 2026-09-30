@@ -147,3 +147,5 @@ training_data/
 training/out*/
 training/*.err
 training/dump_*.json
+# CocoIndex Code (ccc)
+/.cocoindex_code/
