@@ -18,6 +18,9 @@
   <img src="https://img.shields.io/github/last-commit/albertlis/open-writer-2.0?style=flat-square&color=1FB6FF" alt="last commit">
   <img src="https://img.shields.io/badge/startup-~6s-brightgreen?style=flat-square" alt="startup">
 </p>
+<p>
+  <a href="https://ko-fi.com/albert828"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a>
+</p>
 
 <img src="./assets/ww-demo-image-02.gif" alt="WhisperWriter demo" width="760">
 
@@ -26,8 +29,7 @@
 <a href="#-how-it-works">How it works</a> ·
 <a href="#-quick-start">Quick start</a> ·
 <a href="#-documentation">Docs</a> ·
-<a href="#-credits">Credits</a> ·
-<a href="#-support">Support</a>
+<a href="#-credits">Credits</a>
 </b></sub>
 
 </div>
@@ -167,12 +169,6 @@ This is a fork of a fork. It stands on the shoulders of:
 - **[savbell/whisper-writer](https://github.com/savbell/whisper-writer)** is the original WhisperWriter by [@savbell](https://github.com/savbell) and [contributors](https://github.com/savbell/whisper-writer/graphs/contributors).
 - **[Thomas Frank](https://github.com/TomFrankly)** made the Windows-focused fork with LLM post-processing.
 - [OpenAI Whisper](https://github.com/openai/whisper) · [faster-whisper](https://github.com/SYSTRAN/faster-whisper) · [CTranslate2](https://github.com/OpenNMT/CTranslate2)
-
-## ☕ Support
-
-If WhisperWriter saves you some typing, you can buy me a coffee.
-
-<a href="https://ko-fi.com/albert828"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a>
 
 ## 📄 License
 
