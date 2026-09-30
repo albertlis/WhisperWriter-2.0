@@ -45,7 +45,7 @@ After changing dependencies, re-run `uv sync --extra local` manually — `start.
 uv run python run.py
 ```
 
-The working directory **must** be the repo root (`D:\Tools\ww-llm`). Paths like `src/config.yaml` and `assets/` are resolved relative to the current directory.
+The working directory **must** be the repo root. Paths like `src/config.yaml` and `assets/` are resolved relative to the current directory.
 
 `run.py` sets CUDA environment variables, calls `load_dotenv()`, then launches `src/main.py` as a subprocess.
 

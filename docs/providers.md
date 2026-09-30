@@ -99,10 +99,10 @@ The Settings window includes a **Refresh Models** button that fetches the live m
 | Setting | Value |
 |---------|-------|
 | `api_type` | `claude` |
-| `cleanup_model` / `instruction_model` | e.g. `claude-3-5-sonnet-latest`, `claude-3-haiku-20240307` |
+| `cleanup_model` / `instruction_model` | e.g. `claude-sonnet-5-5`, `claude-haiku-4-5-20251001` (fast, cheap) |
 | Keyring key | `claude` |
 
-Default fallback model (when none configured): `claude-3-5-sonnet-latest`.
+Default fallback model (when none configured): `claude-sonnet-5-5`.
 ---
 
 ### OpenAI ChatGPT
@@ -161,5 +161,5 @@ Ollama must be installed separately and running before WhisperWriter starts. The
 | Best cloud accuracy | Groq (`whisper-large-v3`) or Deepgram (`nova-3`) |
 | Custom vocabulary / domain | Fine-tune + `model_path` (see [training/README.md](../training/README.md)) |
 | LLM cleanup, low latency | Groq LLM (`llama-3.1-8b-instant`) |
-| LLM cleanup, high quality | Claude (`claude-3-5-sonnet-latest`) or OpenAI (`gpt-4o`) |
+| LLM cleanup, high quality | Claude (`claude-sonnet-5-5`) or OpenAI (`gpt-4o`) |
 | LLM fully offline | Ollama |

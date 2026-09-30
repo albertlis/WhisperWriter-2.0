@@ -80,7 +80,7 @@ class LLMProcessor:
         
         # Default models if none specified
         default_models = {
-            'claude': 'claude-3-5-sonnet-latest',
+            'claude': 'claude-sonnet-5-5',
             'chatgpt': 'gpt-4o-mini',
             'gemini': 'gemini-1.5-flash',
             'groq': 'llama-3.1-8b-instant',

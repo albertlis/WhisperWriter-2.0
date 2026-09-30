@@ -57,7 +57,7 @@ All fields verified in `src/dataset_recorder.py`.
 
 ## Fine-Tuning
 
-The `training/` directory is a separate sub-project with its own virtual environment. **Do not mix it with the main app venv.** The main venv does not have `torch`; `training/` has `torch+cu128` for RTX 5080 (Blackwell sm_120).
+The `training/` directory is a separate sub-project with its own virtual environment. **Do not mix it with the main app venv.** The main venv does not have `torch`; `training/` has `torch+cu128` (needed for Blackwell GPUs, sm_120).
 
 Quick-start:
 

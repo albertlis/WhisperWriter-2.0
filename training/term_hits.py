@@ -1,4 +1,4 @@
-"""Jednorazowa diagnostyka: czy fine-tuning poprawił nazwy własne i terminy techniczne."""
+"""Diagnostic: did fine-tuning improve proper nouns and technical terms."""
 
 import json
 import re
@@ -19,7 +19,7 @@ word = re.compile(r"[\w'-]+", re.UNICODE)
 
 
 def hits(refs, hyps):
-    """Ile razy termin obecny w referencji pojawił się też w hipotezie."""
+    """How many times a term present in the reference also appeared in the hypothesis."""
     ok, total = Counter(), Counter()
     for r, h in zip(refs, hyps):
         rw = word.findall(r.lower())
@@ -36,7 +36,7 @@ def hits(refs, hyps):
 ob, tb = hits(base["refs"], base["hyps"])
 of, tf = hits(ft["refs"], ft["hyps"])
 
-print(f"{'termin':<16}{'w ref':>6}{'baseline':>10}{'po FT':>8}")
+print(f"{'term':<16}{'in ref':>6}{'baseline':>10}{'after FT':>8}")
 print("-" * 40)
 tb_sum = ob_sum = of_sum = 0
 for t in TERMS:
@@ -46,6 +46,6 @@ for t in TERMS:
         ob_sum += ob[t]
         of_sum += of[t]
 print("-" * 40)
-print(f"{'RAZEM':<16}{tb_sum:>6}{ob_sum:>10}{of_sum:>8}")
+print(f"{'TOTAL':<16}{tb_sum:>6}{ob_sum:>10}{of_sum:>8}")
 if tb_sum:
-    print(f"\ntrafność baseline: {ob_sum / tb_sum:.1%}   po FT: {of_sum / tb_sum:.1%}")
+    print(f"\naccuracy baseline: {ob_sum / tb_sum:.1%}   after FT: {of_sum / tb_sum:.1%}")

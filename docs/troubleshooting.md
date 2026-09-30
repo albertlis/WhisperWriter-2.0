@@ -3,7 +3,7 @@
 ## Startup and Launch
 
 **App must be started from repo root.**
-CWD must be `D:\Tools\ww-llm` — paths like `src/config.yaml` and `assets/` are resolved relative to it. Always use `start.bat` or `uv run python run.py` from the repo root. Do not `cd src && python main.py`.
+CWD must be the repo root — paths like `src/config.yaml` and `assets/` are resolved relative to it. Always use `start.bat` or `uv run python run.py` from the repo root. Do not `cd src && python main.py`.
 
 **Do not install `torch` in the main venv.**
 `ctranslate2` imports `torch` when it is present, adding ~10 s to startup even though the app never uses it directly. If startup is slow, run:

@@ -1,9 +1,9 @@
-"""Przedział ufności dla różnicy WER między dwoma modelami (bootstrap po próbkach).
+"""Confidence interval for WER difference between two models (sample-level bootstrap).
 
     uv run python bootstrap.py base.json ft.json
 
-Pytanie, na które odpowiada: czy różnica WER jest odróżnialna od zera przy 72 próbkach,
-czy mieści się w szumie doboru zbioru testowego.
+Answers the question: is the WER difference distinguishable from zero given the test-set
+size, or does it fall within sampling noise?
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ N_RESAMPLES = 5000
 
 
 def counts(refs: list[str], hyps: list[str]) -> list[tuple[int, int]]:
-    """Na próbkę: (liczba błędów, liczba słów referencji). WER musi się sumować
-    po próbkach jako iloraz sum, nie jako średnia z ilorazów."""
+    """Per sample: (error count, reference word count). WER must be summed across samples
+    as a ratio of sums, not as an average of ratios."""
     out: list[tuple[int, int]] = []
     for ref, hyp in zip(refs, hyps):
         m = jiwer.process_words(ref, hyp, reference_transform=_SOFT, hypothesis_transform=_SOFT)
@@ -44,7 +44,7 @@ def main() -> None:
 
     a = json.loads(open(args.base, encoding="utf-8").read())
     b = json.loads(open(args.other, encoding="utf-8").read())
-    assert a["refs"] == b["refs"], "różne zbiory testowe — porównanie bez sensu"
+    assert a["refs"] == b["refs"], "different test sets — comparison is meaningless"
 
     ca, cb = counts(a["refs"], a["hyps"]), counts(b["refs"], b["hyps"])
     obs = wer_of(cb) - wer_of(ca)
@@ -61,15 +61,15 @@ def main() -> None:
 
     print(f"WER {args.base}  : {wer_of(ca):.4f}")
     print(f"WER {args.other} : {wer_of(cb):.4f}")
-    print(f"różnica (other - base) : {obs:+.4f}")
-    print(f"95% CI                 : [{lo:+.4f}, {hi:+.4f}]")
-    print(f"P(other nie lepszy)    : {p_worse:.3f}")
+    print(f"difference (other - base) : {obs:+.4f}")
+    print(f"95% CI                    : [{lo:+.4f}, {hi:+.4f}]")
+    print(f"P(other not better)       : {p_worse:.3f}")
     print(
-        "\nWNIOSEK: "
+        "\nCONCLUSION: "
         + (
-            "przedział nie obejmuje zera — różnica jest realna."
+            "interval does not include zero — difference is real."
             if hi < 0 or lo > 0
-            else "przedział obejmuje zero — różnica nieodróżnialna od szumu."
+            else "interval includes zero — difference indistinguishable from noise."
         )
     )
 
