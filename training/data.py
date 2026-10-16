@@ -11,7 +11,7 @@ SAMPLE_RATE = 16000
 # Consequence: the app appends a recording on every use, so N grows and
 # train_test_split shuffles differently. The same sample can move between
 # train and test between two runs. Always measure baseline and fine-tuned model
-# in a single pass (run_eval.ps1) without recording in between.
+# in a single pass (train.ps1) without recording in between.
 # The sample count is printed below — if it differs between two runs the
 # comparison is invalid.
 

@@ -121,7 +121,7 @@ repeating paths already proven dead ends.
 | file | role |
 |------|------|
 | `data.py` | train/validation/test split, deterministic, no time-based cutoff |
-| `run_eval.ps1` | export + baseline + model + bootstrap + term hits in one pass |
+| `train.ps1` | entry point: train + export + baseline vs model + bootstrap + term hits + switch `config.yaml` |
 | `term_hits.py` | proper-noun hit count — the only metric that answers "does it know the terms" |
 | `eval_wer.py` | WER via faster-whisper; `--prompt auto`, `--dump` |
 | `train_lora.py` | `Seq2SeqTrainer` + PEFT LoRA on `openai/whisper-large-v3-turbo` |
@@ -134,7 +134,7 @@ repeating paths already proven dead ends.
    so dictating while working on training changes `N` and with it the `train_test_split`. The
    same sample can move from the test set to the train set between two measurements. The
    time-based cutoff was removed on request, so **baseline and model must be measured in a
-   single pass** (`run_eval.ps1`), without dictating in between. The sample count is printed
+   single pass** (`train.ps1`), without dictating in between. The sample count is printed
    at each measurement — if it differs between the two, the comparison is invalid.
 2. **`initial_prompt` with a term list is harmful.** Whisper treats the prompt as stylistic
    context to imitate, not as a vocabulary hint. A comma-separated list teaches it to generate

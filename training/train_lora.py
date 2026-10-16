@@ -8,6 +8,8 @@ Adapter is saved to out/best. Run export_ct2.py afterwards to convert to faster-
 from __future__ import annotations
 
 import argparse
+import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -69,7 +71,9 @@ def main() -> None:
     # At 2e-4 proper nouns improve equally well while WER change is indistinguishable
     # from noise. See Lessons learned in README.md.
     ap.add_argument("--lr", type=float, default=2e-4)
-    ap.add_argument("--batch-size", type=int, default=4)
+    # 8 + grad checkpointing, measured with --probe on 16 GB (RTX 5080): peak 10.1 GiB,
+    # 0.205 s/sample. Batch 4 without checkpointing and batch 16 both hit the VRAM cap.
+    ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument(
         "--workers",
         type=int,
@@ -80,12 +84,29 @@ def main() -> None:
     )
     ap.add_argument(
         "--grad-checkpointing",
-        action="store_true",
-        help="Saves VRAM at the cost of ~25%% extra time. Strongly recommended: without it "
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="On by default. Saves VRAM at the cost of ~25%% extra time. Strongly recommended: without it "
         "a batch of 12 saturates 16 GB of VRAM and the Windows driver silently spills to "
         "host RAM (step time grows from 2 s to 180 s with no error).",
     )
+    ap.add_argument(
+        "--probe",
+        type=int,
+        default=0,
+        help="Run N steps + one eval, print peak VRAM and step time, save nothing to out/best. "
+        "Use to pick --batch-size / --grad-checkpointing by measurement.",
+    )
     args = ap.parse_args()
+
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    # Windows does not OOM when VRAM is full — the driver silently spills to shared host
+    # RAM and steps get ~90x slower. Capping the allocator at the currently free dedicated
+    # VRAM (minus headroom for cuDNN workspaces) turns that silent spill into a real OOM.
+    free, total = torch.cuda.mem_get_info()
+    torch.cuda.set_per_process_memory_fraction((free - 768 * 2**20) / total)
+    print(f"[vram] {free / 2**30:.1f} GiB free of {total / 2**30:.1f} GiB — allocator capped there")
 
     processor = WhisperProcessor.from_pretrained(
         BASE_MODEL, language="polish", task="transcribe"
@@ -106,7 +127,9 @@ def main() -> None:
     splits = splits.map(
         prepare,
         remove_columns=splits["train"].column_names,
-        num_proc=1,
+        # Mel extraction is CPU-bound numpy. 6 procs, not all cores: on Windows each is a
+        # fresh process with its own imports (~1-2 GB RAM each).
+        num_proc=min(6, os.cpu_count() or 1),
         writer_batch_size=50,
     )
 
@@ -155,7 +178,8 @@ def main() -> None:
     trainer = Seq2SeqTrainer(
         model=model,
         args=Seq2SeqTrainingArguments(
-            output_dir=str(OUT),
+            output_dir=str(OUT / "probe" if args.probe else OUT),
+            max_steps=args.probe or -1,
             per_device_train_batch_size=args.batch_size,
             per_device_eval_batch_size=args.batch_size,
             gradient_accumulation_steps=1,
@@ -171,15 +195,15 @@ def main() -> None:
             num_train_epochs=args.epochs,
             bf16=True,
             gradient_checkpointing=args.grad_checkpointing,
-            eval_strategy="steps",
+            eval_strategy="no" if args.probe else "steps",
             eval_steps=50,
-            save_strategy="steps",
+            save_strategy="no" if args.probe else "steps",
             save_steps=50,
             save_total_limit=2,
             logging_steps=10,
             predict_with_generate=True,
             generation_max_length=225,
-            load_best_model_at_end=True,
+            load_best_model_at_end=not args.probe,
             metric_for_best_model="wer",
             greater_is_better=False,
             remove_unused_columns=False,  # PEFT wraps forward; Trainer mis-infers columns
@@ -196,7 +220,23 @@ def main() -> None:
         compute_metrics=compute_metrics,
     )
 
+    t0 = time.perf_counter()
     trainer.train()
+    if args.probe:
+        # Includes warm-up of the first steps — fine for comparing configs, same overhead each.
+        step_s = (time.perf_counter() - t0) / args.probe
+        train_peak = torch.cuda.max_memory_reserved() / 2**30
+        torch.cuda.reset_peak_memory_stats()
+        t1 = time.perf_counter()
+        trainer.evaluate()
+        print(
+            f"[probe] batch {args.batch_size} gc {args.grad_checkpointing}: "
+            f"train peak {train_peak:.2f} GiB, {step_s:.2f} s/step, "
+            f"{step_s / args.batch_size:.3f} s/sample | eval peak "
+            f"{torch.cuda.max_memory_reserved() / 2**30:.2f} GiB, "
+            f"{time.perf_counter() - t1:.0f} s"
+        )
+        return
     model.save_pretrained(OUT / "best")
     processor.save_pretrained(OUT / "best")
     print(f"\nAdapter saved: {OUT / 'best'}")
