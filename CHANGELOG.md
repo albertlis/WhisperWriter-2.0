@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.3.0](https://github.com/albertlis/WhisperWriter-2.0/compare/v0.2.0...v0.3.0) (2026-11-16)
+
+
+### Features
+
+* release automation, contributing guide and demo video ([619c401](https://github.com/albertlis/WhisperWriter-2.0/commit/619c401f1d7e829691dab661154772d67ef7d394))
+* **training:** one-command train.ps1, measured batch size, faster prep ([433b09e](https://github.com/albertlis/WhisperWriter-2.0/commit/433b09e9a6381b162accd3870176b1f49d779041))
+
 ## [Unreleased] - fork by albert.lis, 2026-06-18 → 2026-09-29
 
 ### Added

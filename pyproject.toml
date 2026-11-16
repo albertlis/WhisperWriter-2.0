@@ -1,6 +1,6 @@
 [project]
 name = "whisper-writer"
-version = "0.2.0"
+version = "0.3.0"
 description = "A small speech-to-text app that allows you to write with your voice and optionally clean up your dictated text through LLMs. "
 authors = [
     {name = "savbell"},
